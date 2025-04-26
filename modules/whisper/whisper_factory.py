@@ -2,8 +2,14 @@ from typing import Optional
 import os
 import torch
 
-from modules.utils.paths import (FASTER_WHISPER_MODELS_DIR, DIARIZATION_MODELS_DIR, OUTPUT_DIR,
-                                 INSANELY_FAST_WHISPER_MODELS_DIR, WHISPER_MODELS_DIR, UVR_MODELS_DIR)
+from modules.utils.paths import (
+    FASTER_WHISPER_MODELS_DIR,
+    DIARIZATION_MODELS_DIR,
+    OUTPUT_DIR,
+    INSANELY_FAST_WHISPER_MODELS_DIR,
+    WHISPER_MODELS_DIR,
+    UVR_MODELS_DIR,
+)
 from modules.whisper.faster_whisper_inference import FasterWhisperInference
 from modules.whisper.whisper_Inference import WhisperInference
 from modules.whisper.insanely_fast_whisper_inference import InsanelyFastWhisperInference
@@ -55,45 +61,47 @@ class WhisperFactory:
             An instance of the appropriate whisper inference class based on the whisper_type.
         """
         # Temporal fix of the bug : https://github.com/jhj0517/Whisper-WebUI/issues/144
-        os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+        os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 
         whisper_type = whisper_type.strip().lower()
 
         if whisper_type == WhisperImpl.FASTER_WHISPER.value:
             if torch.xpu.is_available():
-                logger.warning("XPU is detected but faster-whisper only supports CUDA. "
-                               "Automatically switching to insanely-whisper implementation.")
+                logger.warning(
+                    "XPU is detected but faster-whisper only supports CUDA. "
+                    "Automatically switching to insanely-whisper implementation."
+                )
                 return InsanelyFastWhisperInference(
                     model_dir=insanely_fast_whisper_model_dir,
                     output_dir=output_dir,
                     diarization_model_dir=diarization_model_dir,
-                    uvr_model_dir=uvr_model_dir
+                    uvr_model_dir=uvr_model_dir,
                 )
 
             return FasterWhisperInference(
                 model_dir=faster_whisper_model_dir,
                 output_dir=output_dir,
                 diarization_model_dir=diarization_model_dir,
-                uvr_model_dir=uvr_model_dir
+                uvr_model_dir=uvr_model_dir,
             )
         elif whisper_type == WhisperImpl.WHISPER.value:
             return WhisperInference(
                 model_dir=whisper_model_dir,
                 output_dir=output_dir,
                 diarization_model_dir=diarization_model_dir,
-                uvr_model_dir=uvr_model_dir
+                uvr_model_dir=uvr_model_dir,
             )
         elif whisper_type == WhisperImpl.INSANELY_FAST_WHISPER.value:
             return InsanelyFastWhisperInference(
                 model_dir=insanely_fast_whisper_model_dir,
                 output_dir=output_dir,
                 diarization_model_dir=diarization_model_dir,
-                uvr_model_dir=uvr_model_dir
+                uvr_model_dir=uvr_model_dir,
             )
         else:
             return FasterWhisperInference(
                 model_dir=faster_whisper_model_dir,
                 output_dir=output_dir,
                 diarization_model_dir=diarization_model_dir,
-                uvr_model_dir=uvr_model_dir
+                uvr_model_dir=uvr_model_dir,
             )

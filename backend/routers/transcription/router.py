@@ -12,15 +12,11 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 from modules.whisper.data_classes import *
 from modules.utils.paths import BACKEND_CACHE_DIR
-from modules.whisper.faster_whisper_inference import FasterWhisperInference
+from modules.whisper.insanely_fast_whisper_inference import InsanelyFastWhisperInference
 from backend.common.audio import read_audio
 from backend.common.models import QueueResponse
 from backend.common.config_loader import load_server_config
-from backend.db.task.dao import (
-    add_task_to_db,
-    get_db_session,
-    update_task_status_in_db
-)
+from backend.db.task.dao import add_task_to_db, get_db_session, update_task_status_in_db
 from backend.db.task.models import TaskStatus, TaskType
 
 transcription_router = APIRouter(prefix="/transcription", tags=["Transcription"])
@@ -34,21 +30,19 @@ def create_progress_callback(identifier: str):
                 "uuid": identifier,
                 "status": TaskStatus.IN_PROGRESS,
                 "progress": round(progress_value, 2),
-                "updated_at": datetime.utcnow()
+                "updated_at": datetime.utcnow(),
             },
         )
+
     return progress_callback
 
 
 @functools.lru_cache
-def get_pipeline() -> 'FasterWhisperInference':
+def get_pipeline() -> "InsanelyFastWhisperInference":
     config = load_server_config()["whisper"]
-    inferencer = FasterWhisperInference(
-        output_dir=BACKEND_CACHE_DIR
-    )
+    inferencer = InsanelyFastWhisperInference(output_dir=BACKEND_CACHE_DIR)
     inferencer.update_model(
-        model_size=config["model_size"],
-        compute_type=config["compute_type"]
+        model_size=config["model_size"], compute_type=config["compute_type"]
     )
     return inferencer
 
@@ -63,18 +57,13 @@ def run_transcription(
         update_data={
             "uuid": identifier,
             "status": TaskStatus.IN_PROGRESS,
-            "updated_at": datetime.utcnow()
+            "updated_at": datetime.utcnow(),
         },
     )
 
     progress_callback = create_progress_callback(identifier)
     segments, elapsed_time = get_pipeline().run(
-        audio,
-        gr.Progress(),
-        "SRT",
-        False,
-        progress_callback,  
-        *params.to_list()
+        audio, gr.Progress(), "SRT", False, progress_callback, *params.to_list()
     )
     segments = [seg.model_dump() for seg in segments]
 
@@ -116,7 +105,7 @@ async def transcription(
         whisper=whisper_params,
         vad=vad_params,
         bgm_separation=bgm_separation_params,
-        diarization=diarization_params
+        diarization=diarization_params,
     )
 
     identifier = add_task_to_db(
@@ -135,6 +124,8 @@ async def transcription(
         identifier=identifier,
     )
 
-    return QueueResponse(identifier=identifier, status=TaskStatus.QUEUED, message="Transcription task has queued")
-
-
+    return QueueResponse(
+        identifier=identifier,
+        status=TaskStatus.QUEUED,
+        message="Transcription task has queued",
+    )

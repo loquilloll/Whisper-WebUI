@@ -12,23 +12,29 @@ import whisper
 import gradio as gr
 from argparse import Namespace
 
-from modules.utils.paths import (FASTER_WHISPER_MODELS_DIR, DIARIZATION_MODELS_DIR, UVR_MODELS_DIR, OUTPUT_DIR)
+from modules.utils.paths import (
+    FASTER_WHISPER_MODELS_DIR,
+    DIARIZATION_MODELS_DIR,
+    UVR_MODELS_DIR,
+    OUTPUT_DIR,
+)
 from modules.whisper.data_classes import *
 from modules.whisper.base_transcription_pipeline import BaseTranscriptionPipeline
 
 
 class FasterWhisperInference(BaseTranscriptionPipeline):
-    def __init__(self,
-                 model_dir: str = FASTER_WHISPER_MODELS_DIR,
-                 diarization_model_dir: str = DIARIZATION_MODELS_DIR,
-                 uvr_model_dir: str = UVR_MODELS_DIR,
-                 output_dir: str = OUTPUT_DIR,
-                 ):
+    def __init__(
+        self,
+        model_dir: str = FASTER_WHISPER_MODELS_DIR,
+        diarization_model_dir: str = DIARIZATION_MODELS_DIR,
+        uvr_model_dir: str = UVR_MODELS_DIR,
+        output_dir: str = OUTPUT_DIR,
+    ):
         super().__init__(
             model_dir=model_dir,
             diarization_model_dir=diarization_model_dir,
             uvr_model_dir=uvr_model_dir,
-            output_dir=output_dir
+            output_dir=output_dir,
         )
         self.model_dir = model_dir
         os.makedirs(self.model_dir, exist_ok=True)
@@ -37,12 +43,13 @@ class FasterWhisperInference(BaseTranscriptionPipeline):
         self.device = self.get_device()
         self.available_models = self.model_paths.keys()
 
-    def transcribe(self,
-                   audio: Union[str, BinaryIO, np.ndarray],
-                   progress: gr.Progress = gr.Progress(),
-                   progress_callback: Optional[Callable] = None,
-                   *whisper_params,
-                   ) -> Tuple[List[Segment], float]:
+    def transcribe(
+        self,
+        audio: Union[str, BinaryIO, np.ndarray],
+        progress: gr.Progress = gr.Progress(),
+        progress_callback: Optional[Callable] = None,
+        *whisper_params,
+    ) -> Tuple[List[Segment], float]:
         """
         transcribe method for faster-whisper.
 
@@ -68,7 +75,11 @@ class FasterWhisperInference(BaseTranscriptionPipeline):
 
         params = WhisperParams.from_list(list(whisper_params))
 
-        if params.model_size != self.current_model_size or self.model is None or self.current_compute_type != params.compute_type:
+        if (
+            params.model_size != self.current_model_size
+            or self.model is None
+            or self.current_compute_type != params.compute_type
+        ):
             self.update_model(params.model_size, params.compute_type, progress)
 
         segments, info = self.model.transcribe(
@@ -114,11 +125,9 @@ class FasterWhisperInference(BaseTranscriptionPipeline):
         elapsed_time = time.time() - start_time
         return segments_result, elapsed_time
 
-    def update_model(self,
-                     model_size: str,
-                     compute_type: str,
-                     progress: gr.Progress = gr.Progress()
-                     ):
+    def update_model(
+        self, model_size: str, compute_type: str, progress: gr.Progress = gr.Progress()
+    ):
         """
         Update current model setting
 
@@ -135,24 +144,36 @@ class FasterWhisperInference(BaseTranscriptionPipeline):
         """
         progress(0, desc="Initializing Model..")
 
-        model_size_dirname = model_size.replace("/", "--") if "/" in model_size else model_size
-        if model_size not in self.model_paths and model_size_dirname not in self.model_paths:
-            print(f"Model is not detected. Trying to download \"{model_size}\" from huggingface to "
-                  f"\"{os.path.join(self.model_dir, model_size_dirname)} ...")
+        model_size_dirname = (
+            model_size.replace("/", "--") if "/" in model_size else model_size
+        )
+        if (
+            model_size not in self.model_paths
+            and model_size_dirname not in self.model_paths
+        ):
+            print(
+                f'Model is not detected. Trying to download "{model_size}" from huggingface to '
+                f'"{os.path.join(self.model_dir, model_size_dirname)} ...'
+            )
             huggingface_hub.snapshot_download(
                 model_size,
                 local_dir=os.path.join(self.model_dir, model_size_dirname),
             )
             self.model_paths = self.get_model_paths()
-            gr.Info(f"Model is downloaded with the name \"{model_size_dirname}\"")
+            gr.Info(f'Model is downloaded with the name "{model_size_dirname}"')
 
         self.current_model_size = self.model_paths[model_size_dirname]
 
         local_files_only = False
         hf_prefix = "models--Systran--faster-whisper-"
-        official_model_path = os.path.join(self.model_dir, hf_prefix+model_size)
-        if ((os.path.isdir(self.current_model_size) and os.path.exists(self.current_model_size)) or
-            (model_size in faster_whisper.available_models() and os.path.exists(official_model_path))):
+        official_model_path = os.path.join(self.model_dir, hf_prefix + model_size)
+        if (
+            os.path.isdir(self.current_model_size)
+            and os.path.exists(self.current_model_size)
+        ) or (
+            model_size in faster_whisper.available_models()
+            and os.path.exists(official_model_path)
+        ):
             local_files_only = True
 
         self.current_compute_type = compute_type
@@ -161,7 +182,7 @@ class FasterWhisperInference(BaseTranscriptionPipeline):
             model_size_or_path=self.current_model_size,
             download_root=self.model_dir,
             compute_type=self.current_compute_type,
-            local_files_only=local_files_only
+            local_files_only=local_files_only,
         )
 
     def get_model_paths(self):
@@ -172,7 +193,7 @@ class FasterWhisperInference(BaseTranscriptionPipeline):
         ----------
         Name list of models
         """
-        model_paths = {model:model for model in faster_whisper.available_models()}
+        model_paths = {model: model for model in faster_whisper.available_models()}
         faster_whisper_prefix = "models--Systran--faster-whisper-"
 
         existing_models = os.listdir(self.model_dir)
@@ -181,7 +202,7 @@ class FasterWhisperInference(BaseTranscriptionPipeline):
 
         for model_name in existing_models:
             if faster_whisper_prefix in model_name:
-                model_name = model_name[len(faster_whisper_prefix):]
+                model_name = model_name[len(faster_whisper_prefix) :]
 
             if model_name not in whisper.available_models():
                 model_paths[model_name] = os.path.join(self.model_dir, model_name)
@@ -198,8 +219,14 @@ class FasterWhisperInference(BaseTranscriptionPipeline):
     def format_suppress_tokens_str(suppress_tokens_str: str) -> List[int]:
         try:
             suppress_tokens = ast.literal_eval(suppress_tokens_str)
-            if not isinstance(suppress_tokens, list) or not all(isinstance(item, int) for item in suppress_tokens):
-                raise ValueError("Invalid Suppress Tokens. The value must be type of List[int]")
+            if not isinstance(suppress_tokens, list) or not all(
+                isinstance(item, int) for item in suppress_tokens
+            ):
+                raise ValueError(
+                    "Invalid Suppress Tokens. The value must be type of List[int]"
+                )
             return suppress_tokens
         except Exception as e:
-            raise ValueError("Invalid Suppress Tokens. The value must be type of List[int]")
+            raise ValueError(
+                "Invalid Suppress Tokens. The value must be type of List[int]"
+            )
