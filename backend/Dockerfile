@@ -21,9 +21,6 @@ RUN python3 -m venv venv && \
     deactivate
 
 # Now copy the application code
-COPY backend/ ./backend/
-COPY modules/ ./modules/ # Assuming 'modules' is at the root of your build context and needed by the backend
-
 
 FROM debian:bookworm-slim AS runtime
 
