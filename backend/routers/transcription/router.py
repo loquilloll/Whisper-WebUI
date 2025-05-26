@@ -1,5 +1,4 @@
 import functools
-import threading
 import uuid
 import numpy as np
 from fastapi import (
@@ -19,9 +18,12 @@ from backend.common.models import QueueResponse
 from backend.common.config_loader import load_server_config
 from backend.db.task.dao import add_task_to_db, get_db_session, update_task_status_in_db
 from backend.db.task.models import TaskStatus, TaskType
+from filelock import FileLock
+import os
 
-# a global lock so only one .run() happens at a time
-pipeline_lock = threading.Lock()
+# inter-process lock so only one .run() happens at a time, even across workers
+_lock_path = os.path.join(BACKEND_CACHE_DIR, "insanely_fast_whisper.lock")
+pipeline_lock = FileLock(_lock_path)
 
 transcription_router = APIRouter(prefix="/transcription", tags=["Transcription"])
 
