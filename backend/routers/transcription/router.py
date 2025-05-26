@@ -1,4 +1,5 @@
 import functools
+import threading
 import uuid
 import numpy as np
 from fastapi import (
@@ -18,6 +19,9 @@ from backend.common.models import QueueResponse
 from backend.common.config_loader import load_server_config
 from backend.db.task.dao import add_task_to_db, get_db_session, update_task_status_in_db
 from backend.db.task.models import TaskStatus, TaskType
+
+# a global lock so only one .run() happens at a time
+pipeline_lock = threading.Lock()
 
 transcription_router = APIRouter(prefix="/transcription", tags=["Transcription"])
 
@@ -62,9 +66,11 @@ def run_transcription(
     )
 
     progress_callback = create_progress_callback(identifier)
-    segments, elapsed_time = get_pipeline().run(
-        audio, gr.Progress(), "SRT", False, progress_callback, *params.to_list()
-    )
+    # serialize access to the singleton pipeline
+    with pipeline_lock:
+        segments, elapsed_time = get_pipeline().run(
+            audio, gr.Progress(), "SRT", False, progress_callback, *params.to_list()
+        )
     segments = [seg.model_dump() for seg in segments]
 
     update_task_status_in_db(
