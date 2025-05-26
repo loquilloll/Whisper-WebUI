@@ -31,7 +31,9 @@ _lock_path = os.path.join(BACKEND_CACHE_DIR, "insanely_fast_whisper.lock")
 # block indefinitely for the lock (timeout=-1)
 pipeline_lock = FileLock(_lock_path, timeout=-1)
 
-logger = get_logger(__name__)
+# Log the absolute path of the lock file upon module load
+logger = get_logger(__name__) # logger needs to be initialized before use
+logger.info(f"Pipeline lock file initialized at: {os.path.abspath(_lock_path)}")
 
 transcription_router = APIRouter(prefix="/transcription", tags=["Transcription"])
 
@@ -66,6 +68,8 @@ def run_transcription(
     params: TranscriptionPipelineParams,
     identifier: str,
 ) -> List[Segment]:
+    logger.info(f"Task {identifier}: Current working directory: {os.getcwd()}")
+    logger.info(f"Task {identifier}: Using lock file at absolute path: {os.path.abspath(_lock_path)}")
     logger.info(f"Task {identifier}: Attempting to acquire pipeline lock.")
     with pipeline_lock:
         logger.info(f"Task {identifier}: Acquired pipeline lock.")
