@@ -19,6 +19,7 @@ from backend.common.config_loader import load_server_config
 from backend.db.task.dao import add_task_to_db, get_db_session, update_task_status_in_db
 from backend.db.task.models import TaskStatus, TaskType
 from filelock import FileLock
+from modules.utils.logger import get_logger
 import os
 
 # ensure the directory for our lock file actually exists
@@ -28,6 +29,8 @@ os.makedirs(BACKEND_CACHE_DIR, exist_ok=True)
 _lock_path = os.path.join(BACKEND_CACHE_DIR, "insanely_fast_whisper.lock")
 # block indefinitely for the lock (timeout=-1)
 pipeline_lock = FileLock(_lock_path, timeout=-1)
+
+logger = get_logger(__name__)
 
 transcription_router = APIRouter(prefix="/transcription", tags=["Transcription"])
 
@@ -72,11 +75,15 @@ def run_transcription(
     )
 
     progress_callback = create_progress_callback(identifier)
-    # serialize access to the singleton pipeline
+
+    logger.info(f"Task {identifier}: Attempting to acquire pipeline lock.")
     with pipeline_lock:
+        logger.info(f"Task {identifier}: Acquired pipeline lock.")
         segments, elapsed_time = get_pipeline().run(
             audio, gr.Progress(), "SRT", False, progress_callback, *params.to_list()
         )
+        logger.info(f"Task {identifier}: Pipeline run completed. Releasing lock.")
+    # Lock is automatically released when exiting the 'with' block
     segments = [seg.model_dump() for seg in segments]
 
     update_task_status_in_db(
