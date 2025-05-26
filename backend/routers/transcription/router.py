@@ -74,12 +74,6 @@ def run_transcription(
     with pipeline_lock:
         logger.info(f"Task {identifier}: Acquired pipeline lock.")
 
-        # DEBUG: Make the lock duration artificially longer to observe waiting tasks
-        # Remove this after testing
-        logger.info(f"Task {identifier}: (DEBUG) Sleeping for 5 seconds inside lock...")
-        time.sleep(5)
-        logger.info(f"Task {identifier}: (DEBUG) Finished sleeping.")
-
         # Update status to IN_PROGRESS only after acquiring the lock
         update_task_status_in_db(
             identifier=identifier,

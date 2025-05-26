@@ -83,7 +83,6 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
             "temperature": params.temperature,
             "compression_ratio_threshold": params.compression_ratio_threshold,
             "logprob_threshold": params.log_prob_threshold,
-            "return_word_timestamps": params.word_timestamps,
         }
 
         if self.current_model_size.endswith(".en"):
@@ -93,10 +92,13 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
             generate_kwargs["language"] = params.lang
             generate_kwargs["task"] = "translate" if params.is_translate else "transcribe"
 
+        # Determine the correct return_timestamps argument for the pipeline
+        pipeline_return_timestamps_arg = "word" if params.word_timestamps else True
+
         # Run the Hugging Face pipeline
         hf_output = self.model(
             inputs=audio,
-            return_timestamps=True,
+            return_timestamps=pipeline_return_timestamps_arg,
             chunk_length_s=params.chunk_length,
             batch_size=params.batch_size,
             generate_kwargs=generate_kwargs
@@ -113,7 +115,7 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
             if params.word_timestamps and item.get("words"):
                 for w in item["words"]:
                     word_list.append(Word(
-                        word=w.get("word", ""),
+                        word=w.get("text", "").strip(),
                         start=w.get("start", 0.0),
                         end=w.get("end", 0.0),
                         score=w.get("probability", w.get("score", 0.0))
