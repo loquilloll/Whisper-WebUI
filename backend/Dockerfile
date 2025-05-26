@@ -16,7 +16,8 @@ COPY backend/requirements-backend.txt ./backend/requirements-backend.txt
 # This layer will be cached if neither requirements.txt nor backend/requirements-backend.txt change.
 RUN python3 -m venv venv && \
     . venv/bin/activate && \
-    pip install -U -r backend/requirements-backend.txt && \ # This will correctly find ../requirements.txt
+    # This will correctly find ../requirements.txt
+    pip install -U -r backend/requirements-backend.txt && \
     deactivate
 
 # Now copy the application code
