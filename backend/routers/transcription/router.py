@@ -21,6 +21,7 @@ from backend.db.task.models import TaskStatus, TaskType
 from filelock import FileLock
 from modules.utils.logger import get_logger
 import os
+import time # For debugging: to make lock duration obvious
 
 # ensure the directory for our lock file actually exists
 os.makedirs(BACKEND_CACHE_DIR, exist_ok=True)
@@ -65,20 +66,27 @@ def run_transcription(
     params: TranscriptionPipelineParams,
     identifier: str,
 ) -> List[Segment]:
-    update_task_status_in_db(
-        identifier=identifier,
-        update_data={
-            "uuid": identifier,
-            "status": TaskStatus.IN_PROGRESS,
-            "updated_at": datetime.utcnow(),
-        },
-    )
-
-    progress_callback = create_progress_callback(identifier)
-
     logger.info(f"Task {identifier}: Attempting to acquire pipeline lock.")
     with pipeline_lock:
         logger.info(f"Task {identifier}: Acquired pipeline lock.")
+
+        # DEBUG: Make the lock duration artificially longer to observe waiting tasks
+        # Remove this after testing
+        logger.info(f"Task {identifier}: (DEBUG) Sleeping for 5 seconds inside lock...")
+        time.sleep(5)
+        logger.info(f"Task {identifier}: (DEBUG) Finished sleeping.")
+
+        # Update status to IN_PROGRESS only after acquiring the lock
+        update_task_status_in_db(
+            identifier=identifier,
+            update_data={
+                "uuid": identifier,
+                "status": TaskStatus.IN_PROGRESS, # Or TaskStatus.PROCESSING if you prefer
+                "updated_at": datetime.utcnow(),
+            },
+        )
+        progress_callback = create_progress_callback(identifier) # Create callback after status is IN_PROGRESS
+
         segments, elapsed_time = get_pipeline().run(
             audio, gr.Progress(), "SRT", False, progress_callback, *params.to_list()
         )
