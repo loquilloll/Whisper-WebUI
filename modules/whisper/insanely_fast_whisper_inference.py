@@ -1,18 +1,16 @@
 import os
 import time
 import numpy as np
-from typing import BinaryIO, Union, Tuple, List, Callable
+from typing import BinaryIO, Union, Tuple, List, Callable, Optional
 import torch
 from transformers import pipeline
 from transformers.utils import is_flash_attn_2_available
 import gradio as gr
 from huggingface_hub import hf_hub_download
 import whisper
-from rich.progress import Progress, TimeElapsedColumn, BarColumn, TextColumn
-from argparse import Namespace
 
 from modules.utils.paths import (INSANELY_FAST_WHISPER_MODELS_DIR, DIARIZATION_MODELS_DIR, UVR_MODELS_DIR, OUTPUT_DIR)
-from modules.whisper.data_classes import *
+from modules.whisper.data_classes import Segment, Word, WhisperParams
 from modules.whisper.base_transcription_pipeline import BaseTranscriptionPipeline
 from modules.utils.logger import get_logger
 
@@ -20,12 +18,13 @@ logger = get_logger()
 
 
 class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
-    def __init__(self,
-                 model_dir: str = INSANELY_FAST_WHISPER_MODELS_DIR,
-                 diarization_model_dir: str = DIARIZATION_MODELS_DIR,
-                 uvr_model_dir: str = UVR_MODELS_DIR,
-                 output_dir: str = OUTPUT_DIR,
-                 ):
+    def __init__(
+        self,
+        model_dir: str = INSANELY_FAST_WHISPER_MODELS_DIR,
+        diarization_model_dir: str = DIARIZATION_MODELS_DIR,
+        uvr_model_dir: str = UVR_MODELS_DIR,
+        output_dir: str = OUTPUT_DIR,
+    ):
         super().__init__(
             model_dir=model_dir,
             output_dir=output_dir,
@@ -37,12 +36,13 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
 
         self.available_models = self.get_model_paths()
 
-    def transcribe(self,
-                   audio: Union[str, np.ndarray, torch.Tensor],
-                   progress: gr.Progress = gr.Progress(),
-                   progress_callback: Optional[Callable] = None,
-                   *whisper_params,
-                   ) -> Tuple[List[Segment], float]:
+    def transcribe(
+        self,
+        audio: Union[str, np.ndarray, torch.Tensor],
+        progress: gr.Progress = gr.Progress(),
+        progress_callback: Optional[Callable] = None,
+        *whisper_params,
+    ) -> Tuple[List[Segment], float]:
         """
         transcribe method for faster-whisper.
 
@@ -67,57 +67,81 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
         start_time = time.time()
         params = WhisperParams.from_list(list(whisper_params))
 
+        # Ensure the correct model is loaded
         if params.model_size != self.current_model_size or self.model is None or self.current_compute_type != params.compute_type:
             self.update_model(params.model_size, params.compute_type, progress)
 
-        progress(0, desc="Transcribing...Progress is not shown in insanely-fast-whisper.")
-        with Progress(
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(style="yellow1", pulse_style="white"),
-                TimeElapsedColumn(),
-        ) as progress:
-            progress.add_task("[yellow]Transcribing...", total=None)
+        # Signal start of transcription
+        if progress_callback:
+            progress_callback(0.0)
+        else:
+            progress(0.0, desc="Transcribing... (InsanelyFastWhisper)")
 
-            kwargs = {
-                "no_speech_threshold": params.no_speech_threshold,
-                "temperature": params.temperature,
-                "compression_ratio_threshold": params.compression_ratio_threshold,
-                "logprob_threshold": params.log_prob_threshold,
-            }
+        # Prepare kwargs for pipeline
+        generate_kwargs = {
+            "no_speech_threshold": params.no_speech_threshold,
+            "temperature": params.temperature,
+            "compression_ratio_threshold": params.compression_ratio_threshold,
+            "logprob_threshold": params.log_prob_threshold,
+            "return_word_timestamps": params.word_timestamps,
+        }
 
-            if self.current_model_size.endswith(".en"):
-                pass
-            else:
-                kwargs["language"] = params.lang
-                kwargs["task"] = "translate" if params.is_translate else "transcribe"
+        if self.current_model_size.endswith(".en"):
+            # English-only models may not require language/task parameters
+            pass
+        else:
+            generate_kwargs["language"] = params.lang
+            generate_kwargs["task"] = "translate" if params.is_translate else "transcribe"
 
-            segments = self.model(
-                inputs=audio,
-                return_timestamps=True,
-                chunk_length_s=params.chunk_length,
-                batch_size=params.batch_size,
-                generate_kwargs=kwargs
-            )
+        # Run the Hugging Face pipeline
+        hf_output = self.model(
+            inputs=audio,
+            return_timestamps=True,
+            chunk_length_s=params.chunk_length,
+            batch_size=params.batch_size,
+            generate_kwargs=generate_kwargs
+        )
 
-        segments_result = []
-        for item in segments["chunks"]:
+        # Process output into Segment objects
+        segments_result: List[Segment] = []
+        for item in hf_output.get("chunks", []):
             start, end = item["timestamp"][0], item["timestamp"][1]
             if end is None:
                 end = start
+
+            word_list: List[Word] = []
+            if params.word_timestamps and item.get("words"):
+                for w in item["words"]:
+                    word_list.append(Word(
+                        word=w.get("word", ""),
+                        start=w.get("start", 0.0),
+                        end=w.get("end", 0.0),
+                        score=w.get("probability", w.get("score", 0.0))
+                    ))
+
             segments_result.append(Segment(
-                text=item["text"],
+                text=item.get("text", ""),
                 start=start,
-                end=end
+                end=end,
+                words=word_list if word_list else None
             ))
 
         elapsed_time = time.time() - start_time
+
+        # Signal completion
+        if progress_callback:
+            progress_callback(1.0)
+        else:
+            progress(1.0, desc="Completed")
+
         return segments_result, elapsed_time
 
-    def update_model(self,
-                     model_size: str,
-                     compute_type: str,
-                     progress: gr.Progress = gr.Progress(),
-                     ):
+    def update_model(
+        self,
+        model_size: str,
+        compute_type: str,
+        progress: gr.Progress = gr.Progress(),
+    ):
         """
         Update current model setting
 
@@ -150,7 +174,7 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
             model_kwargs={"attn_implementation": "flash_attention_2"} if is_flash_attn_2_available() else {"attn_implementation": "sdpa"},
         )
 
-    def get_model_paths(self):
+    def get_model_paths(self) -> List[str]:
         """
         Get available models from models path including fine-tuned model.
 
@@ -177,7 +201,7 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
         download_root: str,
         progress: gr.Progress
     ):
-        progress(0, 'Initializing model..')
+        progress(0, desc='Initializing model..')
         logger.info(f'Downloading {model_size} to "{download_root}"....')
 
         os.makedirs(download_root, exist_ok=True)
@@ -197,5 +221,6 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
             repo_id = f"distil-whisper/{model_size}"
         else:
             repo_id = f"openai/whisper-{model_size}"
+
         for item in download_list:
             hf_hub_download(repo_id=repo_id, filename=item, local_dir=download_root)
