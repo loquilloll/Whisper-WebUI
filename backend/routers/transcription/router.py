@@ -21,9 +21,13 @@ from backend.db.task.models import TaskStatus, TaskType
 from filelock import FileLock
 import os
 
+# ensure the directory for our lock file actually exists
+os.makedirs(BACKEND_CACHE_DIR, exist_ok=True)
+
 # inter-process lock so only one .run() happens at a time, even across workers
 _lock_path = os.path.join(BACKEND_CACHE_DIR, "insanely_fast_whisper.lock")
-pipeline_lock = FileLock(_lock_path)
+# block indefinitely for the lock (timeout=-1)
+pipeline_lock = FileLock(_lock_path, timeout=-1)
 
 transcription_router = APIRouter(prefix="/transcription", tags=["Transcription"])
 
