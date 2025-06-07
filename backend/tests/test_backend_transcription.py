@@ -5,6 +5,7 @@ import asyncio
 import httpx
 import subprocess
 import time
+import sys
 
 from backend.db.task.models import TaskStatus
 from backend.tests.test_task_status import wait_for_task_completion
@@ -22,7 +23,7 @@ from backend.tests.test_backend_config import (
 def uvicorn_server():
     # Start the uvicorn server as a subprocess
     process = subprocess.Popen(
-        ["uvicorn", "backend.main:app", "--host", "127.0.0.1", "--port", "8000"],
+        [sys.executable, "-m", "uvicorn", "backend.main:app", "--host", "127.0.0.1", "--port", "8000"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
