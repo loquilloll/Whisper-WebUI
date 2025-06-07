@@ -172,6 +172,58 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
             model_kwargs={"attn_implementation": "flash_attention_2"} if is_flash_attn_2_available() else {"attn_implementation": "sdpa"},
         )
 
+        # Apply the monkey patch here, after self.model is initialized
+        if self.model is not None and hasattr(self.model, 'model') and \
+           hasattr(self.model.model, 'generate') and callable(self.model.model.generate):
+            original_generate = self.model.model.generate
+
+            # Check if already patched to avoid double-patching if update_model is called multiple times
+            # with the same model object (though pipeline usually creates a new one)
+            if not hasattr(original_generate, '_is_patched_for_float_tokens'):
+                def patched_generate(*args, **kwargs):
+                    raw_output = original_generate(*args, **kwargs)
+
+                    def sanitize_tensor(tensor_item):
+                        if isinstance(tensor_item, torch.Tensor) and tensor_item.is_floating_point():
+                            logger.debug(f"Sanitizing float tensor to long tensor. Original dtype: {tensor_item.dtype}, Shape: {tensor_item.shape}")
+                            return tensor_item.long()
+                        return tensor_item
+
+                    if isinstance(raw_output, torch.Tensor):
+                        return sanitize_tensor(raw_output)
+                    elif isinstance(raw_output, (list, tuple)):
+                        # Assuming a list/tuple of tensors (e.g., token sequences)
+                        sanitized_list = []
+                        for item in raw_output:
+                            if isinstance(item, torch.Tensor):
+                                sanitized_list.append(sanitize_tensor(item))
+                            else:
+                                sanitized_list.append(item)  # Pass through non-tensor items
+                        return type(raw_output)(sanitized_list)
+                    elif hasattr(raw_output, "sequences") and isinstance(getattr(raw_output, "sequences"), torch.Tensor):
+                        # Handles Hugging Face ModelOutput subclasses (e.g., GenerateOutput)
+                        # The ASR pipeline with return_timestamps=True makes model.generate return such an object.
+                        logger.debug("Sanitizing 'sequences' attribute of ModelOutput.")
+                        raw_output.sequences = sanitize_tensor(raw_output.sequences)
+                        return raw_output
+                    else:
+                        logger.warning(
+                            f"Unexpected output type from model.generate: {type(raw_output)}. "
+                            f"Output structure (first 200 chars): {str(raw_output)[:200]}. Skipping sanitization."
+                        )
+                        return raw_output
+
+                patched_generate._is_patched_for_float_tokens = True  # Mark as patched
+                self.model.model.generate = patched_generate
+                logger.info("Patched self.model.model.generate() in InsanelyFastWhisperInference to sanitize float token IDs.")
+            else:
+                logger.debug("self.model.model.generate() already patched. Skipping.")
+        else:
+            logger.warning(
+                "Could not patch self.model.model.generate() in InsanelyFastWhisperInference: "
+                "self.model.model.generate not found, not callable, or self.model is None."
+            )
+
     def get_model_paths(self):
         """
         Get available models from models path including fine-tuned model.
