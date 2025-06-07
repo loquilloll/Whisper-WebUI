@@ -22,7 +22,7 @@ from backend.tests.test_backend_config import (
 def uvicorn_server():
     # Start the uvicorn server as a subprocess
     process = subprocess.Popen(
-        ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"],
+        ["uvicorn", "backend.main:app", "--host", "127.0.0.1", "--port", "8000"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
@@ -30,7 +30,7 @@ def uvicorn_server():
     # Wait for the server to start
     time.sleep(2)
 
-    yield "http://0.0.0.0:8000"
+    yield "http://127.0.0.1:8000"
 
     # Terminate the server after the tests
     process.terminate()
@@ -57,7 +57,7 @@ def test_transcription_endpoint(get_upload_file_instance, pipeline_params: dict)
     completed_task = wait_for_task_completion(identifier=task_identifier)
 
     assert completed_task is not None, (
-        f"Task with identifier {task_identifier} did not complete within the " f"expected time."
+        f"Task with identifier {task_identifier} did not complete within the expected time."
     )
 
     result = completed_task.json()["result"]
