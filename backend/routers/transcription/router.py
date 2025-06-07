@@ -62,8 +62,9 @@ def run_transcription(
     )
 
     progress_callback = create_progress_callback(identifier)
+    # MODIFIED: Pass None instead of gr.Progress()
     segments, elapsed_time = get_pipeline().run(
-        audio, gr.Progress(), "SRT", False, progress_callback, *params.to_list()
+        audio, None, "SRT", False, progress_callback, *params.to_list()
     )
     segments = [seg.model_dump() for seg in segments]
 

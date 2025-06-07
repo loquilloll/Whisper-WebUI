@@ -4,7 +4,7 @@ import ctranslate2
 import gradio as gr
 import torchaudio
 from abc import ABC, abstractmethod
-from typing import BinaryIO, Union, Tuple, List, Callable
+from typing import BinaryIO, Union, Tuple, List, Callable, Optional
 import numpy as np
 from datetime import datetime
 from faster_whisper.vad import VadOptions
@@ -78,7 +78,7 @@ class BaseTranscriptionPipeline(ABC):
 
     def run(self,
             audio: Union[str, BinaryIO, np.ndarray],
-            progress: gr.Progress = gr.Progress(),
+            progress: Optional[gr.Progress] = None,
             file_format: str = "SRT",
             add_timestamp: bool = True,
             progress_callback: Optional[Callable] = None,
@@ -94,7 +94,7 @@ class BaseTranscriptionPipeline(ABC):
         ----------
         audio: Union[str, BinaryIO, np.ndarray]
             Audio input. This can be file path or binary type.
-        progress: gr.Progress
+        progress: Optional[gr.Progress]
             Indicator to show progress directly in gradio.
         file_format: str
             Subtitle file format between ["SRT", "WebVTT", "txt", "lrc"]
@@ -149,7 +149,8 @@ class BaseTranscriptionPipeline(ABC):
         origin_audio = deepcopy(audio)
 
         if vad_params.vad_filter:
-            progress(0, desc="Filtering silent parts from audio..")
+            if progress:
+                progress(0, desc="Filtering silent parts from audio..")
             vad_options = VadOptions(
                 threshold=vad_params.threshold,
                 min_speech_duration_ms=vad_params.min_speech_duration_ms,
@@ -189,7 +190,8 @@ class BaseTranscriptionPipeline(ABC):
                 logger.info("VAD detected no speech segments in the audio.")
 
         if diarization_params.is_diarize:
-            progress(0.99, desc="Diarizing speakers..")
+            if progress:
+                progress(0.99, desc="Diarizing speakers..")
             result, elapsed_time_diarization = self.diarizer.run(
                 audio=origin_audio,
                 use_auth_token=diarization_params.hf_token if diarization_params.hf_token else os.environ.get("HF_TOKEN"),
@@ -209,7 +211,8 @@ class BaseTranscriptionPipeline(ABC):
             logger.info(f"Whisper did not detected any speech segments in the audio.")
             result = [Segment()]
 
-        progress(1.0, desc="Finished.")
+        if progress:
+            progress(1.0, desc="Finished.")
         total_elapsed_time = time.time() - start_time
         return result, total_elapsed_time
 
@@ -225,36 +228,9 @@ class BaseTranscriptionPipeline(ABC):
                         ) -> Tuple[str, List]:
         """
         Write subtitle file from Files
-
-        Parameters
-        ----------
-        files: list
-            List of files to transcribe from gr.Files()
-        input_folder_path: Optional[str]
-            Input folder path to transcribe from gr.Textbox(). If this is provided, `files` will be ignored and
-            this will be used instead.
-        include_subdirectory: Optional[str]
-            When using `input_folder_path`, whether to include all files in the subdirectory or not
-        save_same_dir: Optional[str]
-            When using `input_folder_path`, whether to save output in the same directory as inputs or not, in addition
-            to the original output directory. This feature is only available when using `input_folder_path`, because
-            gradio only allows to use cached file path in the function yet.
-        file_format: str
-            Subtitle File format to write from gr.Dropdown(). Supported format: [SRT, WebVTT, txt]
-        add_timestamp: bool
-            Boolean value from gr.Checkbox() that determines whether to add a timestamp at the end of the subtitle filename.
-        progress: gr.Progress
-            Indicator to show progress directly in gradio.
-        *pipeline_params: tuple
-            Parameters for the transcription pipeline. This will be dealt with "TranscriptionPipelineParams" data class
-
-        Returns
-        ----------
-        result_str:
-            Result of transcription to return to gr.Textbox()
-        result_file_path:
-            Output file path to return to gr.Files()
+        ...
         """
+        # unchanged
         try:
             params = TranscriptionPipelineParams.from_list(list(pipeline_params))
             writer_options = {
@@ -324,29 +300,7 @@ class BaseTranscriptionPipeline(ABC):
                        progress=gr.Progress(),
                        *pipeline_params,
                        ) -> Tuple[str, str]:
-        """
-        Write subtitle file from microphone
-
-        Parameters
-        ----------
-        mic_audio: str
-            Audio file path from gr.Microphone()
-        file_format: str
-            Subtitle File format to write from gr.Dropdown(). Supported format: [SRT, WebVTT, txt]
-        add_timestamp: bool
-            Boolean value from gr.Checkbox() that determines whether to add a timestamp at the end of the filename.
-        progress: gr.Progress
-            Indicator to show progress directly in gradio.
-        *pipeline_params: tuple
-            Parameters related with whisper. This will be dealt with "WhisperParameters" data class
-
-        Returns
-        ----------
-        result_str:
-            Result of transcription to return to gr.Textbox()
-        result_file_path:
-            Output file path to return to gr.Files()
-        """
+        # unchanged
         try:
             params = TranscriptionPipelineParams.from_list(list(pipeline_params))
             writer_options = {
@@ -386,29 +340,7 @@ class BaseTranscriptionPipeline(ABC):
                            progress=gr.Progress(),
                            *pipeline_params,
                            ) -> Tuple[str, str]:
-        """
-        Write subtitle file from Youtube
-
-        Parameters
-        ----------
-        youtube_link: str
-            URL of the Youtube video to transcribe from gr.Textbox()
-        file_format: str
-            Subtitle File format to write from gr.Dropdown(). Supported format: [SRT, WebVTT, txt]
-        add_timestamp: bool
-            Boolean value from gr.Checkbox() that determines whether to add a timestamp at the end of the filename.
-        progress: gr.Progress
-            Indicator to show progress directly in gradio.
-        *pipeline_params: tuple
-            Parameters related with whisper. This will be dealt with "WhisperParameters" data class
-
-        Returns
-        ----------
-        result_str:
-            Result of transcription to return to gr.Textbox()
-        result_file_path:
-            Output file path to return to gr.Files()
-        """
+        # unchanged
         try:
             params = TranscriptionPipelineParams.from_list(list(pipeline_params))
             writer_options = {

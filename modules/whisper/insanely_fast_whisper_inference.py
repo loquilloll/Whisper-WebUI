@@ -39,7 +39,7 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
 
     def transcribe(self,
                    audio: Union[str, np.ndarray, torch.Tensor],
-                   progress: gr.Progress = gr.Progress(),
+                   progress: Optional[gr.Progress] = None,
                    progress_callback: Optional[Callable] = None,
                    *whisper_params,
                    ) -> Tuple[List[Segment], float]:
@@ -50,7 +50,7 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
         ----------
         audio: Union[str, BinaryIO, np.ndarray]
             Audio path or file binary or Audio numpy array
-        progress: gr.Progress
+        progress: Optional[gr.Progress]
             Indicator to show progress directly in gradio.
         progress_callback: Optional[Callable]
             callback function to show progress in the backend.
@@ -122,7 +122,7 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
     def update_model(self,
                      model_size: str,
                      compute_type: str,
-                     progress: gr.Progress = gr.Progress(),
+                     progress: Optional[gr.Progress] = None,
                      ):
         """
         Update current model setting
@@ -134,10 +134,11 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
         compute_type: str
             Compute type for transcription.
             see more info : https://opennmt.net/CTranslate2/quantization.html
-        progress: gr.Progress
+        progress: Optional[gr.Progress]
             Indicator to show progress directly in gradio.
         """
-        progress(0, desc="Initializing Model..")
+        if progress:
+            progress(0, desc="Initializing Model..")
         model_path = os.path.join(self.model_dir, model_size)
         if not os.path.isdir(model_path) or not os.listdir(model_path):
             self.download_model(
@@ -181,9 +182,10 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
     def download_model(
         model_size: str,
         download_root: str,
-        progress: gr.Progress
+        progress: Optional[gr.Progress]
     ):
-        progress(0, 'Initializing model..')
+        if progress:
+            progress(0, 'Initializing model..')
         logger.info(f'Downloading {model_size} to "{download_root}"....')
 
         os.makedirs(download_root, exist_ok=True)
