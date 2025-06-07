@@ -118,15 +118,20 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
             ))
 
         elapsed_time = time.time() - start_time
-        
+
+        # Explicitly delete model_output to help GC, just in case it holds onto references
+        # that prevent GPU memory from being freed by empty_cache later.
+        if 'model_output' in locals():
+            del model_output
+
         # Enhanced cleanup
         if self.device == "cuda":
             torch.cuda.empty_cache()
         elif self.device == "xpu": 
             torch.xpu.empty_cache()
-        
+
         gc.collect()  # Explicit garbage collection
-        
+
         return segments_result, elapsed_time
 
     def update_model(self,
