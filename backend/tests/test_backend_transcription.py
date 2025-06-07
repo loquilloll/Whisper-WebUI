@@ -21,21 +21,66 @@ from backend.tests.test_backend_config import (
 
 @pytest.fixture(scope="module")
 def uvicorn_server():
+    host = "127.0.0.1"
+    port = 8000
+    base_url = f"http://{host}:{port}"
+    # Assuming /docs or /openapi.json is a valid endpoint for health check
+    # If your app has a specific health check endpoint, prefer that.
+    health_check_url = f"{base_url}/docs"
+
     # Start the uvicorn server as a subprocess
     process = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "backend.main:app", "--host", "127.0.0.1", "--port", "8000"],
+        [sys.executable, "-m", "uvicorn", "backend.main:app", "--host", host, "--port", str(port)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
 
-    # Wait for the server to start
-    time.sleep(2)
+    max_wait_time = 30  # seconds to wait for server to start
+    poll_interval = 0.5  # seconds between health checks
+    start_time = time.time()
 
-    yield "http://127.0.0.1:8000"
+    server_ready = False
+    print(f"Waiting for Uvicorn server to start at {base_url}...")
+    while time.time() - start_time < max_wait_time:
+        try:
+            # Use a synchronous httpx client for the health check within the fixture
+            with httpx.Client() as client:
+                response = client.get(health_check_url, timeout=1.0)
+            if response.status_code == 200:
+                server_ready = True
+                print(f"Uvicorn server started successfully.")
+                break
+        except httpx.ConnectError:
+            # Server not yet accepting connections
+            time.sleep(poll_interval)
+        except Exception as e:
+            # Other errors during health check (e.g., timeout, unexpected status code)
+            print(f"Health check attempt failed: {e}")
+            time.sleep(poll_interval)
+
+    if not server_ready:
+        stdout, stderr = process.communicate()  # Get output for debugging
+        process.terminate()
+        process.wait()
+        raise RuntimeError(
+            f"Uvicorn server failed to start at {base_url} within {max_wait_time} seconds.\n"
+            f"STDOUT: {stdout.decode(errors='ignore')}\n"
+            f"STDERR: {stderr.decode(errors='ignore')}"
+        )
+
+    yield base_url
 
     # Terminate the server after the tests
+    print("Terminating Uvicorn server...")
     process.terminate()
-    process.wait()
+    try:
+        process.wait(timeout=5)  # Wait for graceful termination
+        print("Uvicorn server terminated gracefully.")
+    except subprocess.TimeoutExpired:
+        print("Uvicorn server did not terminate gracefully, killing...")
+        process.kill()
+        process.wait()
+        print("Uvicorn server killed.")
 
 
 @pytest.mark.parametrize("pipeline_params", [TEST_PIPELINE_PARAMS])
