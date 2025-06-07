@@ -1,4 +1,5 @@
 import functools
+import asyncio
 import uuid
 import numpy as np
 from fastapi import (
@@ -21,6 +22,7 @@ from backend.db.task.models import TaskStatus, TaskType
 
 transcription_router = APIRouter(prefix="/transcription", tags=["Transcription"])
 
+gpu_lock = asyncio.Lock()
 
 def create_progress_callback(identifier: str):
     def progress_callback(progress_value: float):
@@ -33,9 +35,7 @@ def create_progress_callback(identifier: str):
                 "updated_at": datetime.utcnow(),
             },
         )
-
     return progress_callback
-
 
 @functools.lru_cache
 def get_pipeline() -> "InsanelyFastWhisperInference":
@@ -46,41 +46,37 @@ def get_pipeline() -> "InsanelyFastWhisperInference":
     )
     return inferencer
 
-
-def run_transcription(
+async def run_transcription(
     audio: np.ndarray,
     params: TranscriptionPipelineParams,
     identifier: str,
 ) -> List[Segment]:
-    update_task_status_in_db(
-        identifier=identifier,
-        update_data={
-            "uuid": identifier,
-            "status": TaskStatus.IN_PROGRESS,
-            "updated_at": datetime.utcnow(),
-        },
-    )
-
-    progress_callback = create_progress_callback(identifier)
-    # MODIFIED: Pass None instead of gr.Progress()
-    segments, elapsed_time = get_pipeline().run(
-        audio, None, "SRT", False, progress_callback, *params.to_list()
-    )
-    segments = [seg.model_dump() for seg in segments]
-
-    update_task_status_in_db(
-        identifier=identifier,
-        update_data={
-            "uuid": identifier,
-            "status": TaskStatus.COMPLETED,
-            "result": segments,
-            "updated_at": datetime.utcnow(),
-            "duration": elapsed_time,
-            "progress": 1.0,
-        },
-    )
-    return segments
-
+    async with gpu_lock:
+        update_task_status_in_db(
+            identifier=identifier,
+            update_data={
+                "uuid": identifier,
+                "status": TaskStatus.IN_PROGRESS,
+                "updated_at": datetime.utcnow(),
+            },
+        )
+        progress_callback = create_progress_callback(identifier)
+        segments, elapsed_time = get_pipeline().run(
+            audio, None, "SRT", False, progress_callback, *params.to_list()
+        )
+        segments_dumped = [seg.model_dump() for seg in segments]
+        update_task_status_in_db(
+            identifier=identifier,
+            update_data={
+                "uuid": identifier,
+                "status": TaskStatus.COMPLETED,
+                "result": segments_dumped,
+                "updated_at": datetime.utcnow(),
+                "duration": elapsed_time,
+                "progress": 1.0,
+            },
+        )
+    return segments_dumped
 
 @transcription_router.post(
     "/",
