@@ -30,9 +30,15 @@ def uvicorn_server():
 
     # Start the uvicorn server as a subprocess
     process = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "backend.main:app", "--host", host, "--port", str(port)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "backend.main:app",
+            "--host", host,
+            "--port", str(port),
+            "--log-level", "debug",
+        ],
     )
 
     max_wait_time = 30  # seconds to wait for server to start
@@ -126,7 +132,7 @@ async def test_concurrent_async_transcription_requests_via_uvicorn(uvicorn_serve
         "/mnt/FC1AFB6C1AFB2276/OBS/2025-05-22_15-30-01_part-4_audio.m4a",
     ]
 
-    # disable HTTPX timeouts (or bump to whatever you need)
+    # disable HTTPX timeouts (or bump to whatever you needs)
     async with httpx.AsyncClient(base_url=uvicorn_server, timeout=None) as client:
         posts = []
         file_objs = []
