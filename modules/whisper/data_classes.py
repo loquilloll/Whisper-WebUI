@@ -623,6 +623,6 @@ class TranscriptionPipelineParams(BaseModel):
         return TranscriptionPipelineParams(
             whisper=WhisperParams.from_list(whisper_list),
             vad=VadParams.from_list(vad_list),
-            diarization=DiararizationParams.from_list(diarization_list),
+            diarization=DiarizationParams.from_list(diarization_list),
             bgm_separation=BGMSeparationParams.from_list(bgm_sep_list)
         )
