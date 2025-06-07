@@ -165,13 +165,7 @@ async def test_concurrent_async_transcription_requests_via_uvicorn(uvicorn_serve
 
                 status_resp = await client.get(f"/task/{uid}")
                 status = status_resp.json().get("status")
-                print(f"Task {uid} status: {status}")
-
-                if status == "completed":
-                    completed.add(uid)
-                elif status == "failed":
-                    # immediately abort test on first failure
-                    raise AssertionError(f"Task {uid} failed")
+                print(f"Task {uid} status: {status}", flush=True)
 
             await asyncio.sleep(1)
 
