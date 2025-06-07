@@ -1,3 +1,4 @@
+import threading
 import os
 import time
 import numpy as np
@@ -21,6 +22,11 @@ logger = get_logger()
 
 
 class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
+    _model: Optional[pipeline] = None
+    _model_lock = threading.Lock()
+    _current_model_size: Optional[str] = None
+    _current_compute_type: Optional[str] = None
+
     def __init__(self,
                  model_dir: str = INSANELY_FAST_WHISPER_MODELS_DIR,
                  diarization_model_dir: str = DIARIZATION_MODELS_DIR,
@@ -68,13 +74,16 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
         start_time = time.time()
         params = WhisperParams.from_list(list(whisper_params))
 
-        if params.model_size != self.current_model_size or self.model is None or self.current_compute_type != params.compute_type:
+        # Check and update shared model if necessary
+        if (params.model_size != InsanelyFastWhisperInference._current_model_size or
+                InsanelyFastWhisperInference._model is None or
+                params.compute_type != InsanelyFastWhisperInference._current_compute_type):
             self.update_model(params.model_size, params.compute_type, progress)
 
         # Update Gradio progress if available and callable
         if progress and hasattr(progress, "__call__"):
             progress(0, desc="Transcribing... (Rich console progress is disabled)")
-        
+
         # Always disable rich.progress.Progress
         with Progress(
                 TextColumn("[progress.description]{task.description}"),
@@ -82,9 +91,6 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
                 TimeElapsedColumn(),
                 disable=True
         ) as rich_progress_display:
-            # Adding a task to a disabled Progress object has no visual effect.
-            # rich_progress_display.add_task("[yellow]Transcribing...", total=None)
-
             kwargs = {
                 "no_speech_threshold": params.no_speech_threshold,
                 "temperature": params.temperature,
@@ -92,45 +98,53 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
                 "logprob_threshold": params.log_prob_threshold,
             }
 
-            if self.current_model_size.endswith(".en"):
+            # Use class-level current_model_size for language-specific logic
+            if InsanelyFastWhisperInference._current_model_size and InsanelyFastWhisperInference._current_model_size.endswith(".en"):
                 pass
             else:
                 kwargs["language"] = params.lang
                 kwargs["task"] = "translate" if params.is_translate else "transcribe"
 
-            model_output = self.model(
-                inputs=audio,
-                return_timestamps=True,
-                chunk_length_s=params.chunk_length,
-                batch_size=params.batch_size,
-                generate_kwargs=kwargs
-            )
+            model_output = None
+            # Serialize access to the shared model for inference
+            with InsanelyFastWhisperInference._model_lock:
+                if InsanelyFastWhisperInference._model is None:
+                    logger.error("Model not loaded despite update_model call. Aborting transcription.")
+                    raise RuntimeError("Model is not available for transcription.")
+
+                model_output = InsanelyFastWhisperInference._model(
+                    inputs=audio,
+                    return_timestamps=True,
+                    chunk_length_s=params.chunk_length,
+                    batch_size=params.batch_size,
+                    generate_kwargs=kwargs
+                )
 
         segments_result = []
-        for item in model_output["chunks"]:
-            start, end = item["timestamp"][0], item["timestamp"][1]
-            if end is None:
-                end = start
-            segments_result.append(Segment(
-                text=item["text"],
-                start=start,
-                end=end
-            ))
+        if model_output:
+            for item in model_output["chunks"]:
+                start, end = item["timestamp"][0], item["timestamp"][1]
+                if end is None:
+                    end = start
+                segments_result.append(Segment(
+                    text=item["text"],
+                    start=start,
+                    end=end
+                ))
 
         elapsed_time = time.time() - start_time
 
-        # Explicitly delete model_output to help GC, just in case it holds onto references
-        # that prevent GPU memory from being freed by empty_cache later.
+        # Explicitly delete model_output to help GC
         if 'model_output' in locals():
             del model_output
 
         # Enhanced cleanup
         if self.device == "cuda":
             torch.cuda.empty_cache()
-        elif self.device == "xpu": 
+        elif self.device == "xpu":
             torch.xpu.empty_cache()
 
-        gc.collect()  # Explicit garbage collection
+        gc.collect()
 
         return segments_result, elapsed_time
 
@@ -140,7 +154,7 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
                      progress: Optional[gr.Progress] = None,
                      ):
         """
-        Update current model setting
+        Update shared model settings
 
         Parameters
         ----------
@@ -148,81 +162,121 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
             Size of whisper model
         compute_type: str
             Compute type for transcription.
-            see more info : https://opennmt.net/CTranslate2/quantization.html
         progress: Optional[gr.Progress]
             Indicator to show progress directly in gradio.
         """
-        if progress:
-            progress(0, desc="Initializing Model..")
-        model_path = os.path.join(self.model_dir, model_size)
-        if not os.path.isdir(model_path) or not os.listdir(model_path):
-            self.download_model(
-                model_size=model_size,
-                download_root=model_path,
-                progress=progress
+        with InsanelyFastWhisperInference._model_lock:
+            # If the requested model is already loaded with correct config, skip
+            if (InsanelyFastWhisperInference._model is not None and
+                    InsanelyFastWhisperInference._current_model_size == model_size and
+                    InsanelyFastWhisperInference._current_compute_type == compute_type):
+                logger.info(f"Model {model_size} with {compute_type} is already loaded.")
+                return
+
+            # Offload previous shared model if exists
+            if InsanelyFastWhisperInference._model is not None:
+                del InsanelyFastWhisperInference._model
+                InsanelyFastWhisperInference._model = None
+                if self.device == "cuda":
+                    torch.cuda.empty_cache()
+                elif self.device == "xpu":
+                    torch.xpu.empty_cache()
+                gc.collect()
+                logger.info("Previous shared model offloaded during update_model.")
+
+            if progress:
+                progress(0, desc="Initializing Model..")
+
+            model_path = os.path.join(self.model_dir, model_size)
+            if not os.path.isdir(model_path) or not os.listdir(model_path):
+                InsanelyFastWhisperInference.download_model(
+                    model_size=model_size,
+                    download_root=model_path,
+                    progress=progress
+                )
+
+            InsanelyFastWhisperInference._current_compute_type = compute_type
+            InsanelyFastWhisperInference._current_model_size = model_size
+
+            # Load the new shared model
+            InsanelyFastWhisperInference._model = pipeline(
+                "automatic-speech-recognition",
+                model=os.path.join(self.model_dir, model_size),
+                torch_dtype=InsanelyFastWhisperInference._current_compute_type,
+                device=self.device,
+                model_kwargs={"attn_implementation": "flash_attention_2"} if is_flash_attn_2_available() else {"attn_implementation": "sdpa"},
             )
+            logger.info(f"Shared model {model_size} with {compute_type} loaded on {self.device}.")
 
-        self.current_compute_type = compute_type
-        self.current_model_size = model_size
-        self.model = pipeline(
-            "automatic-speech-recognition",
-            model=os.path.join(self.model_dir, model_size),
-            torch_dtype=self.current_compute_type,
-            device=self.device,
-            model_kwargs={"attn_implementation": "flash_attention_2"} if is_flash_attn_2_available() else {"attn_implementation": "sdpa"},
-        )
+            # Apply monkey-patch to sanitize float token IDs
+            if (InsanelyFastWhisperInference._model is not None and 
+                    hasattr(InsanelyFastWhisperInference._model, 'model') and
+                    hasattr(InsanelyFastWhisperInference._model.model, 'generate') and 
+                    callable(InsanelyFastWhisperInference._model.model.generate)):
+                original_generate = InsanelyFastWhisperInference._model.model.generate
 
-        # Apply the monkey patch here, after self.model is initialized
-        if self.model is not None and hasattr(self.model, 'model') and \
-           hasattr(self.model.model, 'generate') and callable(self.model.model.generate):
-            original_generate = self.model.model.generate
+                if not hasattr(original_generate, '_is_patched_for_float_tokens'):
+                    def patched_generate(*args, **kwargs):
+                        raw_output = original_generate(*args, **kwargs)
 
-            # Check if already patched to avoid double-patching if update_model is called multiple times
-            # with the same model object (though pipeline usually creates a new one)
-            if not hasattr(original_generate, '_is_patched_for_float_tokens'):
-                def patched_generate(*args, **kwargs):
-                    raw_output = original_generate(*args, **kwargs)
+                        def sanitize_tensor(tensor_item):
+                            if isinstance(tensor_item, torch.Tensor) and tensor_item.is_floating_point():
+                                logger.debug(f"Sanitizing float tensor to long tensor. Original dtype: {tensor_item.dtype}, Shape: {tensor_item.shape}")
+                                return tensor_item.long()
+                            return tensor_item
 
-                    def sanitize_tensor(tensor_item):
-                        if isinstance(tensor_item, torch.Tensor) and tensor_item.is_floating_point():
-                            logger.debug(f"Sanitizing float tensor to long tensor. Original dtype: {tensor_item.dtype}, Shape: {tensor_item.shape}")
-                            return tensor_item.long()
-                        return tensor_item
+                        if isinstance(raw_output, torch.Tensor):
+                            return sanitize_tensor(raw_output)
+                        elif isinstance(raw_output, (list, tuple)):
+                            sanitized_list = []
+                            for item in raw_output:
+                                if isinstance(item, torch.Tensor):
+                                    sanitized_list.append(sanitize_tensor(item))
+                                else:
+                                    sanitized_list.append(item)
+                            return type(raw_output)(sanitized_list)
+                        elif hasattr(raw_output, "sequences") and isinstance(getattr(raw_output, "sequences"), torch.Tensor):
+                            logger.debug("Sanitizing 'sequences' attribute of ModelOutput.")
+                            raw_output.sequences = sanitize_tensor(raw_output.sequences)
+                            return raw_output
+                        else:
+                            logger.warning(
+                                f"Unexpected output type from model.generate: {type(raw_output)}. "
+                                f"Output structure (first 200 chars): {str(raw_output)[:200]}. Skipping sanitization."
+                            )
+                            return raw_output
 
-                    if isinstance(raw_output, torch.Tensor):
-                        return sanitize_tensor(raw_output)
-                    elif isinstance(raw_output, (list, tuple)):
-                        # Assuming a list/tuple of tensors (e.g., token sequences)
-                        sanitized_list = []
-                        for item in raw_output:
-                            if isinstance(item, torch.Tensor):
-                                sanitized_list.append(sanitize_tensor(item))
-                            else:
-                                sanitized_list.append(item)  # Pass through non-tensor items
-                        return type(raw_output)(sanitized_list)
-                    elif hasattr(raw_output, "sequences") and isinstance(getattr(raw_output, "sequences"), torch.Tensor):
-                        # Handles Hugging Face ModelOutput subclasses (e.g., GenerateOutput)
-                        # The ASR pipeline with return_timestamps=True makes model.generate return such an object.
-                        logger.debug("Sanitizing 'sequences' attribute of ModelOutput.")
-                        raw_output.sequences = sanitize_tensor(raw_output.sequences)
-                        return raw_output
-                    else:
-                        logger.warning(
-                            f"Unexpected output type from model.generate: {type(raw_output)}. "
-                            f"Output structure (first 200 chars): {str(raw_output)[:200]}. Skipping sanitization."
-                        )
-                        return raw_output
-
-                patched_generate._is_patched_for_float_tokens = True  # Mark as patched
-                self.model.model.generate = patched_generate
-                logger.info("Patched self.model.model.generate() in InsanelyFastWhisperInference to sanitize float token IDs.")
+                    patched_generate._is_patched_for_float_tokens = True
+                    InsanelyFastWhisperInference._model.model.generate = patched_generate
+                    logger.info("Patched shared self.model.model.generate() in InsanelyFastWhisperInference.")
+                else:
+                    logger.debug("Shared self.model.model.generate() already patched. Skipping.")
             else:
-                logger.debug("self.model.model.generate() already patched. Skipping.")
-        else:
-            logger.warning(
-                "Could not patch self.model.model.generate() in InsanelyFastWhisperInference: "
-                "self.model.model.generate not found, not callable, or self.model is None."
-            )
+                logger.warning(
+                    "Could not patch shared self.model.model.generate() in InsanelyFastWhisperInference: "
+                    "model.generate not found, not callable, or model is None."
+                )
+
+    def offload(self):
+        """
+        Offload the shared model and free up GPU/XPU memory.
+        """
+        with InsanelyFastWhisperInference._model_lock:
+            if InsanelyFastWhisperInference._model is not None:
+                del InsanelyFastWhisperInference._model
+                InsanelyFastWhisperInference._model = None
+                InsanelyFastWhisperInference._current_model_size = None
+                InsanelyFastWhisperInference._current_compute_type = None
+
+                if self.device == "cuda":
+                    torch.cuda.empty_cache()
+                elif self.device == "xpu":
+                    torch.xpu.empty_cache()
+
+                gc.collect()
+                logger.info("InsanelyFastWhisperInference shared model offloaded.")
+            else:
+                logger.info("InsanelyFastWhisperInference shared model already offloaded or not loaded.")
 
     def get_model_paths(self):
         """
