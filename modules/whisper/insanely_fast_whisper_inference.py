@@ -1,7 +1,7 @@
 import os
 import time
 import numpy as np
-from typing import BinaryIO, Union, Tuple, List, Callable
+from typing import BinaryIO, Union, Tuple, List, Callable, Optional
 import torch
 from transformers import pipeline
 from transformers.utils import is_flash_attn_2_available
@@ -53,7 +53,7 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
         progress: gr.Progress
             Indicator to show progress directly in gradio.
         progress_callback: Optional[Callable]
-            callback function to show progress. Can be used to update progress in the backend.
+            callback function to show progress in the backend.
         *whisper_params: tuple
             Parameters related with whisper. This will be dealt with "WhisperParameters" data class
 
@@ -70,13 +70,19 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
         if params.model_size != self.current_model_size or self.model is None or self.current_compute_type != params.compute_type:
             self.update_model(params.model_size, params.compute_type, progress)
 
-        progress(0, desc="Transcribing...Progress is not shown in insanely-fast-whisper.")
+        # Update Gradio progress if available and callable
+        if progress and hasattr(progress, "__call__"):
+            progress(0, desc="Transcribing... (Rich console progress is disabled)")
+        
+        # Always disable rich.progress.Progress
         with Progress(
                 TextColumn("[progress.description]{task.description}"),
                 BarColumn(style="yellow1", pulse_style="white"),
                 TimeElapsedColumn(),
-        ) as progress:
-            progress.add_task("[yellow]Transcribing...", total=None)
+                disable=True
+        ) as rich_progress_display:
+            # Adding a task to a disabled Progress object has no visual effect.
+            # rich_progress_display.add_task("[yellow]Transcribing...", total=None)
 
             kwargs = {
                 "no_speech_threshold": params.no_speech_threshold,
@@ -91,7 +97,7 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
                 kwargs["language"] = params.lang
                 kwargs["task"] = "translate" if params.is_translate else "transcribe"
 
-            segments = self.model(
+            model_output = self.model(
                 inputs=audio,
                 return_timestamps=True,
                 chunk_length_s=params.chunk_length,
@@ -100,7 +106,7 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
             )
 
         segments_result = []
-        for item in segments["chunks"]:
+        for item in model_output["chunks"]:
             start, end = item["timestamp"][0], item["timestamp"][1]
             if end is None:
                 end = start
