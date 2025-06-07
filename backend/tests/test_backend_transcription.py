@@ -140,7 +140,9 @@ async def test_concurrent_async_transcription_requests_via_uvicorn(uvicorn_serve
         for path in file_paths:
             f = open(path, "rb")
             file_objs.append(f)
-            posts.append(client.post("/transcription/", files={"file": f}))
+            # override the Whisper model size to large-v3-turbo
+            params = {**TEST_PIPELINE_PARAMS, "model_size": "large-v3-turbo"}
+            posts.append(client.post("/transcription/", files={"file": f}, params=params))
 
         # kick off all uploads
         responses = await asyncio.gather(*posts)
