@@ -168,6 +168,9 @@ async def test_concurrent_async_transcription_requests_via_uvicorn(uvicorn_serve
                 status_resp = await client.get(f"/task/{uid}")
                 status = status_resp.json().get("status")
                 print(f"Task {uid} status: {status}", flush=True)
+                # once we see a terminal state, mark this uid done so we exit the loop
+                if status in {TaskStatus.COMPLETED, TaskStatus.FAILED}:
+                    completed.add(uid)
 
             await asyncio.sleep(1)
 
