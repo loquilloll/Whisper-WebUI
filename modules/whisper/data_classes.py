@@ -336,8 +336,8 @@ class WhisperParams(BaseParams):
     )
     batch_size: int = Field(default=24, gt=0, description="Batch size for processing")
     enable_offload: bool = Field(
-        default=True,
-        description="Offload Whisper model after transcription"
+        default=False,
+        description="Offload Whisper model after transcription. For API usage with a cached pipeline, this should typically be False to keep the model hot."
     )
 
     @field_validator('lang')
@@ -457,7 +457,6 @@ class WhisperParams(BaseParams):
                 info="Threshold for gzip compression ratio"
             )
         ]
-
         faster_whisper_inputs = [
             gr.Number(
                 label="Length Penalty",
@@ -624,6 +623,6 @@ class TranscriptionPipelineParams(BaseModel):
         return TranscriptionPipelineParams(
             whisper=WhisperParams.from_list(whisper_list),
             vad=VadParams.from_list(vad_list),
-            diarization=DiarizationParams.from_list(diarization_list),
+            diarization=DiararizationParams.from_list(diarization_list),
             bgm_separation=BGMSeparationParams.from_list(bgm_sep_list)
         )

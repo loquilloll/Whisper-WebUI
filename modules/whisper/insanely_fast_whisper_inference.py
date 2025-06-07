@@ -8,6 +8,7 @@ from transformers.utils import is_flash_attn_2_available
 import gradio as gr
 from huggingface_hub import hf_hub_download
 import whisper
+import gc
 from rich.progress import Progress, TimeElapsedColumn, BarColumn, TextColumn
 from argparse import Namespace
 
@@ -117,6 +118,15 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
             ))
 
         elapsed_time = time.time() - start_time
+        
+        # Enhanced cleanup
+        if self.device == "cuda":
+            torch.cuda.empty_cache()
+        elif self.device == "xpu": 
+            torch.xpu.empty_cache()
+        
+        gc.collect()  # Explicit garbage collection
+        
         return segments_result, elapsed_time
 
     def update_model(self,
