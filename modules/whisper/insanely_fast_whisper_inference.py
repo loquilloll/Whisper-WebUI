@@ -13,7 +13,7 @@ import gc
 from rich.progress import Progress, TimeElapsedColumn, BarColumn, TextColumn
 from argparse import Namespace
 
-from modules.utils.paths import (INSANELY_FAST_WHISPER_MODELS_DIR, DIARIZATION_MODELS_DIR, UVR_MODELS_DIR, OUTPUT_DIR)
+from modules.utils.paths import INSANELY_FAST_WHISPER_MODELS_DIR, DIARIZATION_MODELS_DIR, UVR_MODELS_DIR, OUTPUT_DIR
 from modules.whisper.data_classes import *
 from modules.whisper.base_transcription_pipeline import BaseTranscriptionPipeline
 from modules.utils.logger import get_logger
@@ -27,29 +27,31 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
     _current_model_size: Optional[str] = None
     _current_compute_type: Optional[str] = None
 
-    def __init__(self,
-                 model_dir: str = INSANELY_FAST_WHISPER_MODELS_DIR,
-                 diarization_model_dir: str = DIARIZATION_MODELS_DIR,
-                 uvr_model_dir: str = UVR_MODELS_DIR,
-                 output_dir: str = OUTPUT_DIR,
-                 ):
+    def __init__(
+        self,
+        model_dir: str = INSANELY_FAST_WHISPER_MODELS_DIR,
+        diarization_model_dir: str = DIARIZATION_MODELS_DIR,
+        uvr_model_dir: str = UVR_MODELS_DIR,
+        output_dir: str = OUTPUT_DIR,
+    ):
         super().__init__(
             model_dir=model_dir,
             output_dir=output_dir,
             diarization_model_dir=diarization_model_dir,
-            uvr_model_dir=uvr_model_dir
+            uvr_model_dir=uvr_model_dir,
         )
         self.model_dir = model_dir
         os.makedirs(self.model_dir, exist_ok=True)
 
         self.available_models = self.get_model_paths()
 
-    def transcribe(self,
-                   audio: Union[str, np.ndarray, torch.Tensor],
-                   progress: Optional[gr.Progress] = None,
-                   progress_callback: Optional[Callable] = None,
-                   *whisper_params,
-                   ) -> Tuple[List[Segment], float]:
+    def transcribe(
+        self,
+        audio: Union[str, np.ndarray, torch.Tensor],
+        progress: Optional[gr.Progress] = None,
+        progress_callback: Optional[Callable] = None,
+        *whisper_params,
+    ) -> Tuple[List[Segment], float]:
         """
         transcribe method for faster-whisper.
 
@@ -75,9 +77,11 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
         params = WhisperParams.from_list(list(whisper_params))
 
         # Check and update shared model if necessary
-        if (params.model_size != InsanelyFastWhisperInference._current_model_size or
-                InsanelyFastWhisperInference._model is None or
-                params.compute_type != InsanelyFastWhisperInference._current_compute_type):
+        if (
+            params.model_size != InsanelyFastWhisperInference._current_model_size
+            or InsanelyFastWhisperInference._model is None
+            or params.compute_type != InsanelyFastWhisperInference._current_compute_type
+        ):
             self.update_model(params.model_size, params.compute_type, progress)
 
         # Update Gradio progress if available and callable
@@ -86,10 +90,10 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
 
         # Always disable rich.progress.Progress
         with Progress(
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(style="yellow1", pulse_style="white"),
-                TimeElapsedColumn(),
-                disable=True
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(style="yellow1", pulse_style="white"),
+            TimeElapsedColumn(),
+            disable=True,
         ) as rich_progress_display:
             kwargs = {
                 "no_speech_threshold": params.no_speech_threshold,
@@ -99,7 +103,10 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
             }
 
             # Use class-level current_model_size for language-specific logic
-            if InsanelyFastWhisperInference._current_model_size and InsanelyFastWhisperInference._current_model_size.endswith(".en"):
+            if (
+                InsanelyFastWhisperInference._current_model_size
+                and InsanelyFastWhisperInference._current_model_size.endswith(".en")
+            ):
                 pass
             else:
                 kwargs["language"] = params.lang
@@ -117,7 +124,7 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
                     return_timestamps=True,
                     chunk_length_s=params.chunk_length,
                     batch_size=params.batch_size,
-                    generate_kwargs=kwargs
+                    generate_kwargs=kwargs,
                 )
 
         segments_result = []
@@ -126,33 +133,31 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
                 start, end = item["timestamp"][0], item["timestamp"][1]
                 if end is None:
                     end = start
-                segments_result.append(Segment(
-                    text=item["text"],
-                    start=start,
-                    end=end
-                ))
+                segments_result.append(Segment(text=item["text"], start=start, end=end))
 
         elapsed_time = time.time() - start_time
 
         # Explicitly delete model_output to help GC
-        if 'model_output' in locals():
+        if "model_output" in locals():
             del model_output
 
-        # Enhanced cleanup
-        if self.device == "cuda":
-            torch.cuda.empty_cache()
-        elif self.device == "xpu":
-            torch.xpu.empty_cache()
+        # Not needed. self.offload is called after self.transcribe in the base_transcription_pipeline.py:180
+        # # Unload the model cleanup
+        # if self.device == "cuda":
+        #     torch.cuda.empty_cache()
+        # elif self.device == "xpu":
+        #     torch.xpu.empty_cache()
 
-        gc.collect()
+        # gc.collect()
 
         return segments_result, elapsed_time
 
-    def update_model(self,
-                     model_size: str,
-                     compute_type: str,
-                     progress: Optional[gr.Progress] = None,
-                     ):
+    def update_model(
+        self,
+        model_size: str,
+        compute_type: str,
+        progress: Optional[gr.Progress] = None,
+    ):
         """
         Update shared model settings
 
@@ -167,9 +172,11 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
         """
         with InsanelyFastWhisperInference._model_lock:
             # If the requested model is already loaded with correct config, skip
-            if (InsanelyFastWhisperInference._model is not None and
-                    InsanelyFastWhisperInference._current_model_size == model_size and
-                    InsanelyFastWhisperInference._current_compute_type == compute_type):
+            if (
+                InsanelyFastWhisperInference._model is not None
+                and InsanelyFastWhisperInference._current_model_size == model_size
+                and InsanelyFastWhisperInference._current_compute_type == compute_type
+            ):
                 logger.info(f"Model {model_size} with {compute_type} is already loaded.")
                 return
 
@@ -190,9 +197,7 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
             model_path = os.path.join(self.model_dir, model_size)
             if not os.path.isdir(model_path) or not os.listdir(model_path):
                 InsanelyFastWhisperInference.download_model(
-                    model_size=model_size,
-                    download_root=model_path,
-                    progress=progress
+                    model_size=model_size, download_root=model_path, progress=progress
                 )
 
             InsanelyFastWhisperInference._current_compute_type = compute_type
@@ -204,24 +209,33 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
                 model=os.path.join(self.model_dir, model_size),
                 torch_dtype=InsanelyFastWhisperInference._current_compute_type,
                 device=self.device,
-                model_kwargs={"attn_implementation": "flash_attention_2"} if is_flash_attn_2_available() else {"attn_implementation": "sdpa"},
+                model_kwargs=(
+                    {"attn_implementation": "flash_attention_2"}
+                    if is_flash_attn_2_available()
+                    else {"attn_implementation": "sdpa"}
+                ),
             )
             logger.info(f"Shared model {model_size} with {compute_type} loaded on {self.device}.")
 
             # Apply monkey-patch to sanitize float token IDs
-            if (InsanelyFastWhisperInference._model is not None and 
-                    hasattr(InsanelyFastWhisperInference._model, 'model') and
-                    hasattr(InsanelyFastWhisperInference._model.model, 'generate') and 
-                    callable(InsanelyFastWhisperInference._model.model.generate)):
+            if (
+                InsanelyFastWhisperInference._model is not None
+                and hasattr(InsanelyFastWhisperInference._model, "model")
+                and hasattr(InsanelyFastWhisperInference._model.model, "generate")
+                and callable(InsanelyFastWhisperInference._model.model.generate)
+            ):
                 original_generate = InsanelyFastWhisperInference._model.model.generate
 
-                if not hasattr(original_generate, '_is_patched_for_float_tokens'):
+                if not hasattr(original_generate, "_is_patched_for_float_tokens"):
+
                     def patched_generate(*args, **kwargs):
                         raw_output = original_generate(*args, **kwargs)
 
                         def sanitize_tensor(tensor_item):
                             if isinstance(tensor_item, torch.Tensor) and tensor_item.is_floating_point():
-                                logger.debug(f"Sanitizing float tensor to long tensor. Original dtype: {tensor_item.dtype}, Shape: {tensor_item.shape}")
+                                logger.debug(
+                                    f"Sanitizing float tensor to long tensor. Original dtype: {tensor_item.dtype}, Shape: {tensor_item.shape}"
+                                )
                                 return tensor_item.long()
                             return tensor_item
 
@@ -235,7 +249,9 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
                                 else:
                                     sanitized_list.append(item)
                             return type(raw_output)(sanitized_list)
-                        elif hasattr(raw_output, "sequences") and isinstance(getattr(raw_output, "sequences"), torch.Tensor):
+                        elif hasattr(raw_output, "sequences") and isinstance(
+                            getattr(raw_output, "sequences"), torch.Tensor
+                        ):
                             logger.debug("Sanitizing 'sequences' attribute of ModelOutput.")
                             raw_output.sequences = sanitize_tensor(raw_output.sequences)
                             return raw_output
@@ -300,13 +316,9 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
         return available_models
 
     @staticmethod
-    def download_model(
-        model_size: str,
-        download_root: str,
-        progress: Optional[gr.Progress]
-    ):
+    def download_model(model_size: str, download_root: str, progress: Optional[gr.Progress]):
         if progress:
-            progress(0, 'Initializing model..')
+            progress(0, "Initializing model..")
         logger.info(f'Downloading {model_size} to "{download_root}"....')
 
         os.makedirs(download_root, exist_ok=True)
