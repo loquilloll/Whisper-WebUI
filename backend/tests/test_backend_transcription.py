@@ -35,9 +35,12 @@ def uvicorn_server():
             "-m",
             "uvicorn",
             "backend.main:app",
-            "--host", host,
-            "--port", str(port),
-            "--log-level", "debug",
+            "--host",
+            host,
+            "--port",
+            str(port),
+            "--log-level",
+            "debug",
         ],
     )
 
@@ -108,9 +111,9 @@ def test_transcription_endpoint(get_upload_file_instance, pipeline_params: dict)
 
     completed_task = wait_for_task_completion(identifier=task_identifier)
 
-    assert completed_task is not None, (
-        f"Task with identifier {task_identifier} did not complete within the expected time."
-    )
+    assert (
+        completed_task is not None
+    ), f"Task with identifier {task_identifier} did not complete within the expected time."
 
     result = completed_task.json()["result"]
     assert result, "Transcription text is empty"
@@ -176,9 +179,11 @@ async def test_concurrent_async_transcription_requests_via_uvicorn(uvicorn_serve
 
         # fetch and verify each transcript
         for uid in uuids:
-            resp = await client.get(f"/task/file/{uid}")
+            resp = await client.get(f"/task/{uid}")
             assert resp.status_code == 200
 
-            transcript = resp.text
-            wer = calculate_wer(TEST_ANSWER, transcript)
+            result = resp.json()["result"]
+            assert result, "Transcription text is empty"
+
+            wer = calculate_wer(TEST_ANSWER, result[0]["text"].strip().replace(",", "").replace(".", ""))
             assert wer < 0.3, f"HIGH WER={wer} for {uid}"
