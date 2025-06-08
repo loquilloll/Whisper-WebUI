@@ -85,7 +85,7 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
             self.update_model(params.model_size, params.compute_type, progress)
 
         # Update Gradio progress if available and callable
-        if progress and hasattr(progress, "__call__"):
+        if progress is not None and callable(progress):
             progress(0, desc="Transcribing... (Rich console progress is disabled)")
 
         # Always disable rich.progress.Progress
