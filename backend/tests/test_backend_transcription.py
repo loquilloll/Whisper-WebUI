@@ -6,6 +6,7 @@ import httpx
 import subprocess
 import time
 import sys
+import random
 
 from backend.db.task.models import TaskStatus
 from backend.tests.test_task_status import wait_for_task_completion
@@ -143,6 +144,9 @@ async def test_concurrent_async_transcription_requests_via_uvicorn(uvicorn_serve
         for path in file_paths:
             f = open(path, "rb")
             file_objs.append(f)
+            # random jitter before each POST (0–1000 ms)
+            delay_ms = random.randint(0, 1000)
+            await asyncio.sleep(delay_ms / 1000)
             # override the Whisper model size to large-v3-turbo
             params = {**TEST_PIPELINE_PARAMS, "model_size": "large-v3-turbo"}
             posts.append(client.post("/transcription/", files={"file": f}, params=params))
