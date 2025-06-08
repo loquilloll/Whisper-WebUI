@@ -102,15 +102,10 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
                 "logprob_threshold": params.log_prob_threshold,
             }
 
-            # Use class-level current_model_size for language-specific logic
-            if (
-                InsanelyFastWhisperInference._current_model_size
-                and InsanelyFastWhisperInference._current_model_size.endswith(".en")
-            ):
-                pass
-            else:
-                kwargs["language"] = params.lang
-                kwargs["task"] = "translate" if params.is_translate else "transcribe"
+            # Always set language; only pass `task="translate"` when requested.
+            kwargs["language"] = params.lang
+            if params.is_translate:
+                kwargs["task"] = "translate"
 
             model_output = None
             # Serialize access to the shared model for inference
@@ -147,7 +142,7 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
         #     torch.cuda.empty_cache()
         # elif self.device == "xpu":
         #     torch.xpu.empty_cache()
-
+        #
         # gc.collect()
 
         return segments_result, elapsed_time
