@@ -10,7 +10,7 @@ WORKDIR /Whisper-WebUI
 COPY requirements.txt requirements.txt
 RUN python3 -m venv venv && \
     . venv/bin/activate && \
-    pip install --no-cache-dir -U -r requirements.txt
+    pip install -U -r backend/requirements-backend.txt
 
 COPY backend/ backend/
 
