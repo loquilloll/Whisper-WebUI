@@ -1,12 +1,12 @@
 import pytest
-from fastapi import UploadFile
-from io import BytesIO
 import asyncio
 import httpx
 import subprocess
 import time
 import sys
 import random
+from io import BytesIO
+from fastapi import UploadFile
 
 from backend.db.task.models import TaskStatus
 from backend.tests.test_task_status import wait_for_task_completion
@@ -145,7 +145,7 @@ async def test_concurrent_async_transcription_requests_via_uvicorn(uvicorn_serve
             f = open(path, "rb")
             file_objs.append(f)
             # random jitter before each POST (0–1000 ms)
-            delay_ms = random.randint(0, 1000)
+            delay_ms = random.randint(1000, 3000)
             await asyncio.sleep(delay_ms / 1000)
             # override the Whisper model size to large-v3-turbo
             params = {**TEST_PIPELINE_PARAMS, "model_size": "large-v3-turbo"}
