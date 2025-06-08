@@ -8,7 +8,7 @@ from fastapi import (
 )
 import gradio as gr
 from fastapi import APIRouter, BackgroundTasks, Depends, Response, status
-from typing import List, Dict
+from typing import List, Dict, Any
 from sqlalchemy.orm import Session
 from datetime import datetime
 from modules.whisper.data_classes import *
@@ -24,9 +24,11 @@ transcription_router = APIRouter(prefix="/transcription", tags=["Transcription"]
 
 gpu_lock = asyncio.Lock()
 
-def create_progress_callback(identifier: str):
+
+def create_progress_callback(identifier: str, db: Session):
     def progress_callback(progress_value: float):
         update_task_status_in_db(
+            session=db,
             identifier=identifier,
             update_data={
                 "uuid": identifier,
@@ -35,48 +37,64 @@ def create_progress_callback(identifier: str):
                 "updated_at": datetime.utcnow(),
             },
         )
+
     return progress_callback
+
 
 @functools.lru_cache
 def get_pipeline() -> "InsanelyFastWhisperInference":
     config = load_server_config()["whisper"]
     inferencer = InsanelyFastWhisperInference(output_dir=BACKEND_CACHE_DIR)
-    inferencer.update_model(
-        model_size=config["model_size"], compute_type=config["compute_type"]
-    )
+    inferencer.update_model(model_size=config["model_size"], compute_type=config["compute_type"])
     return inferencer
+
 
 async def run_transcription(
     audio: np.ndarray,
     params: TranscriptionPipelineParams,
     identifier: str,
-) -> List[Segment]:
-    async with gpu_lock:
-        update_task_status_in_db(
-            identifier=identifier,
-            update_data={
-                "uuid": identifier,
-                "status": TaskStatus.IN_PROGRESS,
-                "updated_at": datetime.utcnow(),
-            },
+    db: Session,
+) -> List[Dict[str, Any]]:
+    # Update status to IN_PROGRESS before acquiring the lock,
+    # as the task is actively being processed by a background worker.
+    update_task_status_in_db(
+        session=db,
+        identifier=identifier,
+        update_data={
+            "uuid": identifier,
+            "status": TaskStatus.IN_PROGRESS,
+            "updated_at": datetime.utcnow(),
+        },
+    )
+    progress_callback = create_progress_callback(identifier=identifier, db=db)
+
+    async with gpu_lock:  # Serialize access to GPU-bound operations
+        # Run the blocking (CPU/GPU-bound) function in a separate thread
+        segments, elapsed_time = await asyncio.to_thread(
+            get_pipeline().run,  # The function to execute
+            audio,  # Arguments for get_pipeline().run
+            None,
+            "SRT",
+            False,
+            progress_callback,
+            *params.to_list()
         )
-        progress_callback = create_progress_callback(identifier)
-        segments, elapsed_time = get_pipeline().run(
-            audio, None, "SRT", False, progress_callback, *params.to_list()
-        )
-        segments_dumped = [seg.model_dump() for seg in segments]
-        update_task_status_in_db(
-            identifier=identifier,
-            update_data={
-                "uuid": identifier,
-                "status": TaskStatus.COMPLETED,
-                "result": segments_dumped,
-                "updated_at": datetime.utcnow(),
-                "duration": elapsed_time,
-                "progress": 1.0,
-            },
-        )
+
+    segments_dumped = [seg.model_dump() for seg in segments]
+    update_task_status_in_db(
+        session=db,
+        identifier=identifier,
+        update_data={
+            "uuid": identifier,
+            "status": TaskStatus.COMPLETED,
+            "result": segments_dumped,
+            "updated_at": datetime.utcnow(),
+            "duration": elapsed_time,
+            "progress": 1.0,
+        },
+    )
     return segments_dumped
+
 
 @transcription_router.post(
     "/",
@@ -87,6 +105,7 @@ async def run_transcription(
 )
 async def transcription(
     background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db_session),
     file: UploadFile = File(..., description="Audio or video file to transcribe."),
     whisper_params: WhisperParams = Depends(),
     vad_params: VadParams = Depends(),
@@ -106,6 +125,7 @@ async def transcription(
     )
 
     identifier = add_task_to_db(
+        session=db,
         status=TaskStatus.QUEUED,
         file_name=file.filename,
         audio_duration=info.duration if info else None,
@@ -119,6 +139,7 @@ async def transcription(
         audio=audio,
         params=params,
         identifier=identifier,
+        db=db,  # Pass the db session to the background task
     )
 
     return QueueResponse(
