@@ -1,25 +1,24 @@
 FROM debian:bookworm-slim AS builder
 
 RUN apt-get update && \
-    apt-get install -y curl git python3 python3-pip python3-venv && \
-    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* && \
+    apt-get install -y --no-install-recommends curl git python3 python3-pip python3-venv && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
     mkdir -p /Whisper-WebUI
 
 WORKDIR /Whisper-WebUI
 
-COPY backend/ backend/
 COPY requirements.txt requirements.txt
-
 RUN python3 -m venv venv && \
     . venv/bin/activate && \
-    pip install -U -r backend/requirements-backend.txt
+    pip install --no-cache-dir -U -r requirements.txt
 
+COPY backend/ backend/
 
 FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update && \
-    apt-get install -y curl ffmpeg python3 && \
-    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+    apt-get install -y --no-install-recommends curl ffmpeg python3 && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 WORKDIR /Whisper-WebUI
 
