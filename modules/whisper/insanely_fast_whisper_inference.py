@@ -115,7 +115,7 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
                     raise RuntimeError("Model is not available for transcription.")
 
                 model_output = InsanelyFastWhisperInference._model(
-                    inputs=audio,
+                    input_features=audio,
                     return_timestamps=True,
                     chunk_length_s=params.chunk_length,
                     batch_size=params.batch_size,
