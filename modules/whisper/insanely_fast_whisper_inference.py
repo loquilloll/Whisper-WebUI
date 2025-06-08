@@ -22,6 +22,12 @@ logger = get_logger()
 
 
 class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
+    """
+    High-performance Whisper inference pipeline using HuggingFace transformers.
+
+    Manages loading, caching and offloading of models, and performs audio transcription
+    (and optional translation) with progress reporting.
+    """
     _model: Optional[Pipeline] = None
     _model_lock = threading.RLock()
     _current_model_size: Optional[str] = None
@@ -35,6 +41,15 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
         uvr_model_dir: str = UVR_MODELS_DIR,
         output_dir: str = OUTPUT_DIR,
     ):
+        """
+        Initialize the inference engine.
+
+        Args:
+            model_dir (str): Path where Whisper model directories are stored.
+            diarization_model_dir (str): Path to speaker-diarization models.
+            uvr_model_dir (str): Path to music-separation (UVR) models.
+            output_dir (str): Path to write output artifacts (optional).
+        """
         super().__init__(
             model_dir=model_dir,
             output_dir=output_dir,
@@ -52,6 +67,24 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
         progress_callback: Optional[Callable] = None,
         *whisper_params,
     ) -> Tuple[List[Segment], float]:
+        """
+        Perform transcription on an audio input.
+
+        Args:
+            audio (str | np.ndarray | torch.Tensor):
+                File path, raw array or tensor of audio samples.
+            progress (gr.Progress, optional):
+                Gradio progress callback to update UI.
+            progress_callback (Callable, optional):
+                Low-level callback invoked with float progress values.
+            *whisper_params:
+                WhisperParams in list form (model_size, compute_type, thresholds, etc.).
+
+        Returns:
+            Tuple[List[Segment], float]:
+                - List of Segment(text, start, end) from the model.
+                - Elapsed time in seconds.
+        """
         start_time = time.time()
         params = WhisperParams.from_list(list(whisper_params))
 
@@ -115,6 +148,17 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
         compute_type: str,
         progress: Optional[gr.Progress] = None,
     ):
+        """
+        Load or switch the underlying Whisper model.
+
+        Args:
+            model_size (str): Name of the model to load (e.g. "tiny", "base", "distil-...").
+            compute_type (str): Torch dtype (e.g. "float16", "float32") for weights.
+            progress (gr.Progress, optional): Progress callback while downloading/loading.
+
+        Raises:
+            RuntimeError: If the pipeline download or load fails.
+        """
         with InsanelyFastWhisperInference._model_lock:
             if (
                 InsanelyFastWhisperInference._model is not None
@@ -191,6 +235,9 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
                     logger.info("Patched generate for float token sanitization.")
 
     def _perform_actual_offload(self):
+        """
+        Immediately delete the in-memory model, clear GPU/XPU caches, and run garbage collection.
+        """
         with InsanelyFastWhisperInference._model_lock:
             if InsanelyFastWhisperInference._model is not None:
                 del InsanelyFastWhisperInference._model
@@ -207,6 +254,12 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
                 logger.info("Model already offloaded.")
 
     def offload(self, idle_timeout: int = 60):
+        """
+        Schedule model offload after a period of inactivity.
+
+        Args:
+            idle_timeout (int): Seconds to wait before auto-offloading the model.
+        """
         with InsanelyFastWhisperInference._model_lock:
             if InsanelyFastWhisperInference._offload_timer and InsanelyFastWhisperInference._offload_timer.is_alive():
                 InsanelyFastWhisperInference._offload_timer.cancel()
@@ -217,6 +270,12 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
             logger.info(f"Scheduled offload in {idle_timeout} seconds.")
 
     def get_model_paths(self):
+        """
+        Enumerate available Whisper model names.
+
+        Returns:
+            List[str]: Sorted list of default and locally-downloaded model sizes.
+        """
         openai_models = whisper.available_models()
         distil_models = ["distil-large-v2", "distil-large-v3", "distil-medium.en", "distil-small.en"]
         default = openai_models + distil_models
@@ -227,6 +286,14 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
 
     @staticmethod
     def download_model(model_size: str, download_root: str, progress: Optional[gr.Progress] = None):
+        """
+        Download all required files for a Whisper model from HuggingFace Hub.
+
+        Args:
+            model_size (str): Model identifier (e.g. "tiny", "distil-medium.en").
+            download_root (str): Local directory to store the model files.
+            progress (gr.Progress, optional): Progress callback during download.
+        """
         if progress and callable(progress):
             progress(0, desc="Downloading model...")
         os.makedirs(download_root, exist_ok=True)
