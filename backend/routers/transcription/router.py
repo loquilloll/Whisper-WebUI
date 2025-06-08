@@ -10,7 +10,7 @@ import gradio as gr
 from fastapi import APIRouter, BackgroundTasks, Depends, Response, status
 from typing import List, Dict, Any
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timezone
 from modules.whisper.data_classes import *
 from modules.utils.paths import BACKEND_CACHE_DIR
 from modules.whisper.insanely_fast_whisper_inference import InsanelyFastWhisperInference
@@ -34,7 +34,7 @@ def create_progress_callback(identifier: str, db: Session):
                 "uuid": identifier,
                 "status": TaskStatus.IN_PROGRESS,
                 "progress": round(progress_value, 2),
-                "updated_at": datetime.utcnow(),
+                "updated_at": datetime.now(timezone.utc),
             },
         )
 

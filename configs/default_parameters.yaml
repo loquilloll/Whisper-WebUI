@@ -1,5 +1,5 @@
 whisper:
-  model_size: large-v3-turbo
+  model_size: tiny
   lang: Automatic Detection
   is_translate: false
   beam_size: 5
