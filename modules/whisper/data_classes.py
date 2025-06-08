@@ -29,20 +29,12 @@ class Segment(BaseModel):
     avg_logprob: Optional[float] = Field(default=None, description="Average log probability of the tokens")
     compression_ratio: Optional[float] = Field(default=None, description="Compression ratio of the segment")
     no_speech_prob: Optional[float] = Field(default=None, description="Probability that it's not speech")
-    words: Optional[List['Word']] = Field(default=None, description="List of words contained in the segment")
+    words: Optional[List["Word"]] = Field(default=None, description="List of words contained in the segment")
 
     @classmethod
-    def from_faster_whisper(cls,
-                            seg: faster_whisper.transcribe.Segment):
+    def from_faster_whisper(cls, seg: faster_whisper.transcribe.Segment):
         if seg.words is not None:
-            words = [
-                Word(
-                    start=w.start,
-                    end=w.end,
-                    word=w.word,
-                    probability=w.probability
-                ) for w in seg.words
-            ]
+            words = [Word(start=w.start, end=w.end, word=w.word, probability=w.probability) for w in seg.words]
         else:
             words = None
 
@@ -57,7 +49,7 @@ class Segment(BaseModel):
             avg_logprob=seg.avg_logprob,
             compression_ratio=seg.compression_ratio,
             no_speech_prob=seg.no_speech_prob,
-            words=words
+            words=words,
         )
 
 
@@ -78,7 +70,7 @@ class BaseParams(BaseModel):
         return list(self.model_dump().values())
 
     @classmethod
-    def from_list(cls, data_list: List) -> 'BaseParams':
+    def from_list(cls, data_list: List) -> "BaseParams":
         field_names = list(cls.model_fields.keys())
         return cls(**dict(zip(field_names, data_list)))
 
@@ -87,33 +79,26 @@ class BaseParams(BaseModel):
 # More info : https://github.com/fastapi/fastapi/discussions/8634#discussioncomment-5153136
 class VadParams(BaseParams):
     """Voice Activity Detection parameters"""
-    vad_filter: bool = Field(default=False, description="Enable voice activity detection to filter out non-speech parts")
+
+    vad_filter: bool = Field(
+        default=False, description="Enable voice activity detection to filter out non-speech parts"
+    )
     threshold: float = Field(
         default=0.5,
         ge=0.0,
         le=1.0,
-        description="Speech threshold for Silero VAD. Probabilities above this value are considered speech"
+        description="Speech threshold for Silero VAD. Probabilities above this value are considered speech",
     )
     min_speech_duration_ms: int = Field(
-        default=250,
-        ge=0,
-        description="Final speech chunks shorter than this are discarded"
+        default=250, ge=0, description="Final speech chunks shorter than this are discarded"
     )
     max_speech_duration_s: float = Field(
-        default=float("inf"),
-        gt=0,
-        description="Maximum duration of speech chunks in seconds"
+        default=float("inf"), gt=0, description="Maximum duration of speech chunks in seconds"
     )
     min_silence_duration_ms: int = Field(
-        default=2000,
-        ge=0,
-        description="Minimum silence duration between speech chunks"
+        default=2000, ge=0, description="Minimum silence duration between speech chunks"
     )
-    speech_pad_ms: int = Field(
-        default=400,
-        ge=0,
-        description="Padding added to each side of speech chunks"
-    )
+    speech_pad_ms: int = Field(default=400, ge=0, description="Padding added to each side of speech chunks")
 
     @classmethod
     def to_gradio_inputs(cls, defaults: Optional[Dict] = None) -> List[gr.components.base.FormComponent]:
@@ -122,54 +107,54 @@ class VadParams(BaseParams):
                 label=_("Enable Silero VAD Filter"),
                 value=defaults.get("vad_filter", cls.__fields__["vad_filter"].default),
                 interactive=True,
-                info=_("Enable this to transcribe only detected voice")
+                info=_("Enable this to transcribe only detected voice"),
             ),
             gr.Slider(
-                minimum=0.0, maximum=1.0, step=0.01, label="Speech Threshold",
+                minimum=0.0,
+                maximum=1.0,
+                step=0.01,
+                label="Speech Threshold",
                 value=defaults.get("threshold", cls.__fields__["threshold"].default),
-                info="Lower it to be more sensitive to small sounds."
+                info="Lower it to be more sensitive to small sounds.",
             ),
             gr.Number(
-                label="Minimum Speech Duration (ms)", precision=0,
+                label="Minimum Speech Duration (ms)",
+                precision=0,
                 value=defaults.get("min_speech_duration_ms", cls.__fields__["min_speech_duration_ms"].default),
-                info="Final speech chunks shorter than this time are thrown out"
+                info="Final speech chunks shorter than this time are thrown out",
             ),
             gr.Number(
                 label="Maximum Speech Duration (s)",
                 value=defaults.get("max_speech_duration_s", GRADIO_NONE_NUMBER_MAX),
-                info="Maximum duration of speech chunks in \"seconds\"."
+                info='Maximum duration of speech chunks in "seconds".',
             ),
             gr.Number(
-                label="Minimum Silence Duration (ms)", precision=0,
+                label="Minimum Silence Duration (ms)",
+                precision=0,
                 value=defaults.get("min_silence_duration_ms", cls.__fields__["min_silence_duration_ms"].default),
-                info="In the end of each speech chunk wait for this time before separating it"
+                info="In the end of each speech chunk wait for this time before separating it",
             ),
             gr.Number(
-                label="Speech Padding (ms)", precision=0,
+                label="Speech Padding (ms)",
+                precision=0,
                 value=defaults.get("speech_pad_ms", cls.__fields__["speech_pad_ms"].default),
-                info="Final speech chunks are padded by this time each side"
-            )
+                info="Final speech chunks are padded by this time each side",
+            ),
         ]
 
 
 class DiarizationParams(BaseParams):
     """Speaker diarization parameters"""
+
     is_diarize: bool = Field(default=False, description="Enable speaker diarization")
     diarization_device: str = Field(default="cuda", description="Device to run Diarization model.")
-    hf_token: str = Field(
-        default="",
-        description="Hugging Face token for downloading diarization models"
-    )
-    enable_offload: bool = Field(
-        default=True,
-        description="Offload Diarization model after Speaker diarization"
-    )
+    hf_token: str = Field(default="", description="Hugging Face token for downloading diarization models")
+    enable_offload: bool = Field(default=True, description="Offload Diarization model after Speaker diarization")
 
     @classmethod
-    def to_gradio_inputs(cls,
-                         defaults: Optional[Dict] = None,
-                         available_devices: Optional[List] = None,
-                         device: Optional[str] = None) -> List[gr.components.base.FormComponent]:
+    def to_gradio_inputs(
+        cls, defaults: Optional[Dict] = None, available_devices: Optional[List] = None, device: Optional[str] = None
+    ) -> List[gr.components.base.FormComponent]:
         return [
             gr.Checkbox(
                 label=_("Enable Diarization"),
@@ -183,54 +168,45 @@ class DiarizationParams(BaseParams):
             gr.Textbox(
                 label=_("HuggingFace Token"),
                 value=defaults.get("hf_token", cls.__fields__["hf_token"].default),
-                info=_("This is only needed the first time you download the model")
+                info=_("This is only needed the first time you download the model"),
             ),
             gr.Checkbox(
                 label=_("Offload sub model when finished"),
                 value=defaults.get("enable_offload", cls.__fields__["enable_offload"].default),
-            )
+            ),
         ]
 
 
 class BGMSeparationParams(BaseParams):
     """Background music separation parameters"""
+
     is_separate_bgm: bool = Field(default=False, description="Enable background music separation")
-    uvr_model_size: str = Field(
-        default="UVR-MDX-NET-Inst_HQ_4",
-        description="UVR model size"
-    )
+    uvr_model_size: str = Field(default="UVR-MDX-NET-Inst_HQ_4", description="UVR model size")
     uvr_device: str = Field(default="cuda", description="Device to run UVR model.")
-    segment_size: int = Field(
-        default=256,
-        gt=0,
-        description="Segment size for UVR model"
-    )
-    save_file: bool = Field(
-        default=False,
-        description="Whether to save separated audio files"
-    )
-    enable_offload: bool = Field(
-        default=True,
-        description="Offload UVR model after transcription"
-    )
+    segment_size: int = Field(default=256, gt=0, description="Segment size for UVR model")
+    save_file: bool = Field(default=False, description="Whether to save separated audio files")
+    enable_offload: bool = Field(default=True, description="Offload UVR model after transcription")
 
     @classmethod
-    def to_gradio_input(cls,
-                        defaults: Optional[Dict] = None,
-                        available_devices: Optional[List] = None,
-                        device: Optional[str] = None,
-                        available_models: Optional[List] = None) -> List[gr.components.base.FormComponent]:
+    def to_gradio_input(
+        cls,
+        defaults: Optional[Dict] = None,
+        available_devices: Optional[List] = None,
+        device: Optional[str] = None,
+        available_models: Optional[List] = None,
+    ) -> List[gr.components.base.FormComponent]:
         return [
             gr.Checkbox(
                 label=_("Enable Background Music Remover Filter"),
                 value=defaults.get("is_separate_bgm", cls.__fields__["is_separate_bgm"].default),
                 interactive=True,
-                info=_("Enabling this will remove background music")
+                info=_("Enabling this will remove background music"),
             ),
             gr.Dropdown(
                 label=_("Model"),
-                choices=["UVR-MDX-NET-Inst_HQ_4",
-                         "UVR-MDX-NET-Inst_3"] if available_models is None else available_models,
+                choices=(
+                    ["UVR-MDX-NET-Inst_HQ_4", "UVR-MDX-NET-Inst_3"] if available_models is None else available_models
+                ),
                 value=defaults.get("uvr_model_size", cls.__fields__["uvr_model_size"].default),
             ),
             gr.Dropdown(
@@ -242,7 +218,7 @@ class BGMSeparationParams(BaseParams):
                 label="Segment Size",
                 value=defaults.get("segment_size", cls.__fields__["segment_size"].default),
                 precision=0,
-                info="Segment size for UVR model"
+                info="Segment size for UVR model",
             ),
             gr.Checkbox(
                 label=_("Save separated files to output"),
@@ -251,103 +227,69 @@ class BGMSeparationParams(BaseParams):
             gr.Checkbox(
                 label=_("Offload sub model when finished"),
                 value=defaults.get("enable_offload", cls.__fields__["enable_offload"].default),
-            )
+            ),
         ]
 
 
 class WhisperParams(BaseParams):
     """Whisper parameters"""
+
     model_size: str = Field(default="large-v2", description="Whisper model size")
     lang: Optional[str] = Field(default=None, description="Source language of the file to transcribe")
     is_translate: bool = Field(default=False, description="Translate speech to English end-to-end")
     beam_size: int = Field(default=5, ge=1, description="Beam size for decoding")
     log_prob_threshold: float = Field(
-        default=-1.0,
-        description="Threshold for average log probability of sampled tokens"
+        default=-1.0, description="Threshold for average log probability of sampled tokens"
     )
-    no_speech_threshold: float = Field(
-        default=0.6,
-        ge=0.0,
-        le=1.0,
-        description="Threshold for detecting silence"
-    )
+    no_speech_threshold: float = Field(default=0.6, ge=0.0, le=1.0, description="Threshold for detecting silence")
     compute_type: str = Field(default="float16", description="Computation type for transcription")
     best_of: int = Field(default=5, ge=1, description="Number of candidates when sampling")
     patience: float = Field(default=1.0, gt=0, description="Beam search patience factor")
-    condition_on_previous_text: bool = Field(
-        default=True,
-        description="Use previous output as prompt for next window"
-    )
+    condition_on_previous_text: bool = Field(default=True, description="Use previous output as prompt for next window")
     prompt_reset_on_temperature: float = Field(
-        default=0.5,
-        ge=0.0,
-        le=1.0,
-        description="Temperature threshold for resetting prompt"
+        default=0.5, ge=0.0, le=1.0, description="Temperature threshold for resetting prompt"
     )
     initial_prompt: Optional[str] = Field(default=None, description="Initial prompt for first window")
-    temperature: float = Field(
-        default=0.0,
-        ge=0.0,
-        description="Temperature for sampling"
-    )
-    compression_ratio_threshold: float = Field(
-        default=2.4,
-        gt=0,
-        description="Threshold for gzip compression ratio"
-    )
+    temperature: float = Field(default=0.0, ge=0.0, description="Temperature for sampling")
+    compression_ratio_threshold: float = Field(default=2.4, gt=0, description="Threshold for gzip compression ratio")
     length_penalty: float = Field(default=1.0, gt=0, description="Exponential length penalty")
     repetition_penalty: float = Field(default=1.0, gt=0, description="Penalty for repeated tokens")
     no_repeat_ngram_size: int = Field(default=0, ge=0, description="Size of n-grams to prevent repetition")
     prefix: Optional[str] = Field(default=None, description="Prefix text for first window")
-    suppress_blank: bool = Field(
-        default=True,
-        description="Suppress blank outputs at start of sampling"
-    )
+    suppress_blank: bool = Field(default=True, description="Suppress blank outputs at start of sampling")
     suppress_tokens: Optional[Union[List[int], str]] = Field(default=[-1], description="Token IDs to suppress")
-    max_initial_timestamp: float = Field(
-        default=1.0,
-        ge=0.0,
-        description="Maximum initial timestamp"
-    )
+    max_initial_timestamp: float = Field(default=1.0, ge=0.0, description="Maximum initial timestamp")
     word_timestamps: bool = Field(default=False, description="Extract word-level timestamps")
-    prepend_punctuations: Optional[str] = Field(
-        default="\"'“¿([{-",
-        description="Punctuations to merge with next word"
-    )
+    prepend_punctuations: Optional[str] = Field(default="\"'“¿([{-", description="Punctuations to merge with next word")
     append_punctuations: Optional[str] = Field(
-        default="\"'.。,，!！?？:：”)]}、",
-        description="Punctuations to merge with previous word"
+        default="\"'.。,，!！?？:：”)]}、", description="Punctuations to merge with previous word"
     )
     max_new_tokens: Optional[int] = Field(default=None, description="Maximum number of new tokens per chunk")
     chunk_length: Optional[int] = Field(default=30, description="Length of audio segments in seconds")
     hallucination_silence_threshold: Optional[float] = Field(
-        default=None,
-        description="Threshold for skipping silent periods in hallucination detection"
+        default=None, description="Threshold for skipping silent periods in hallucination detection"
     )
     hotwords: Optional[str] = Field(default=None, description="Hotwords/hint phrases for the model")
     language_detection_threshold: Optional[float] = Field(
-        default=0.5,
-        description="Threshold for language detection probability"
+        default=0.5, description="Threshold for language detection probability"
     )
-    language_detection_segments: int = Field(
-        default=1,
-        gt=0,
-        description="Number of segments for language detection"
-    )
+    language_detection_segments: int = Field(default=1, gt=0, description="Number of segments for language detection")
     batch_size: int = Field(default=24, gt=0, description="Batch size for processing")
     enable_offload: bool = Field(
-        default=False,
-        description="Offload Whisper model after transcription. For API usage with a cached pipeline, this should typically be False to keep the model hot."
+        default=True,
+        description="Offload Whisper model after transcription. For API usage with a cached pipeline, this should typically be False to keep the model hot.",
     )
 
-    @field_validator('lang')
+    @field_validator("lang")
     def validate_lang(cls, v):
         from modules.utils.constants import AUTOMATIC_DETECTION
+
         return None if v == AUTOMATIC_DETECTION.unwrap() else v
 
-    @field_validator('suppress_tokens')
+    @field_validator("suppress_tokens")
     def validate_supress_tokens(cls, v):
         import ast
+
         try:
             if isinstance(v, str):
                 suppress_tokens = ast.literal_eval(v)
@@ -360,14 +302,16 @@ class WhisperParams(BaseParams):
             raise ValueError(f"Invalid Suppress Tokens. The value must be type of List[int]: {e}")
 
     @classmethod
-    def to_gradio_inputs(cls,
-                         defaults: Optional[Dict] = None,
-                         only_advanced: Optional[bool] = True,
-                         whisper_type: Optional[str] = None,
-                         available_models: Optional[List] = None,
-                         available_langs: Optional[List] = None,
-                         available_compute_types: Optional[List] = None,
-                         compute_type: Optional[str] = None):
+    def to_gradio_inputs(
+        cls,
+        defaults: Optional[Dict] = None,
+        only_advanced: Optional[bool] = True,
+        whisper_type: Optional[str] = None,
+        available_models: Optional[List] = None,
+        available_langs: Optional[List] = None,
+        available_compute_types: Optional[List] = None,
+        compute_type: Optional[str] = None,
+    ):
         whisper_type = WhisperImpl.FASTER_WHISPER.value if whisper_type is None else whisper_type.strip().lower()
 
         inputs = []
@@ -394,53 +338,54 @@ class WhisperParams(BaseParams):
                 label="Beam Size",
                 value=defaults.get("beam_size", cls.__fields__["beam_size"].default),
                 precision=0,
-                info="Beam size for decoding"
+                info="Beam size for decoding",
             ),
             gr.Number(
                 label="Log Probability Threshold",
                 value=defaults.get("log_prob_threshold", cls.__fields__["log_prob_threshold"].default),
-                info="Threshold for average log probability of sampled tokens"
+                info="Threshold for average log probability of sampled tokens",
             ),
             gr.Number(
                 label="No Speech Threshold",
                 value=defaults.get("no_speech_threshold", cls.__fields__["no_speech_threshold"].default),
-                info="Threshold for detecting silence"
+                info="Threshold for detecting silence",
             ),
             gr.Dropdown(
                 label="Compute Type",
                 choices=["float16", "int8", "int16"] if available_compute_types is None else available_compute_types,
                 value=defaults.get("compute_type", compute_type),
-                info="Computation type for transcription"
+                info="Computation type for transcription",
             ),
             gr.Number(
                 label="Best Of",
                 value=defaults.get("best_of", cls.__fields__["best_of"].default),
                 precision=0,
-                info="Number of candidates when sampling"
+                info="Number of candidates when sampling",
             ),
             gr.Number(
                 label="Patience",
                 value=defaults.get("patience", cls.__fields__["patience"].default),
-                info="Beam search patience factor"
+                info="Beam search patience factor",
             ),
             gr.Checkbox(
                 label="Condition On Previous Text",
                 value=defaults.get("condition_on_previous_text", cls.__fields__["condition_on_previous_text"].default),
-                info="Use previous output as prompt for next window"
+                info="Use previous output as prompt for next window",
             ),
             gr.Slider(
                 label="Prompt Reset On Temperature",
-                value=defaults.get("prompt_reset_on_temperature",
-                                   cls.__fields__["prompt_reset_on_temperature"].default),
+                value=defaults.get(
+                    "prompt_reset_on_temperature", cls.__fields__["prompt_reset_on_temperature"].default
+                ),
                 minimum=0,
                 maximum=1,
                 step=0.01,
-                info="Temperature threshold for resetting prompt"
+                info="Temperature threshold for resetting prompt",
             ),
             gr.Textbox(
                 label="Initial Prompt",
                 value=defaults.get("initial_prompt", GRADIO_NONE_STR),
-                info="Initial prompt for first window"
+                info="Initial prompt for first window",
             ),
             gr.Slider(
                 label="Temperature",
@@ -448,14 +393,15 @@ class WhisperParams(BaseParams):
                 minimum=0.0,
                 step=0.01,
                 maximum=1.0,
-                info="Temperature for sampling"
+                info="Temperature for sampling",
             ),
             gr.Number(
                 label="Compression Ratio Threshold",
-                value=defaults.get("compression_ratio_threshold",
-                                   cls.__fields__["compression_ratio_threshold"].default),
-                info="Threshold for gzip compression ratio"
-            )
+                value=defaults.get(
+                    "compression_ratio_threshold", cls.__fields__["compression_ratio_threshold"].default
+                ),
+                info="Threshold for gzip compression ratio",
+            ),
         ]
         faster_whisper_inputs = [
             gr.Number(
@@ -466,85 +412,80 @@ class WhisperParams(BaseParams):
             gr.Number(
                 label="Repetition Penalty",
                 value=defaults.get("repetition_penalty", cls.__fields__["repetition_penalty"].default),
-                info="Penalty for repeated tokens"
+                info="Penalty for repeated tokens",
             ),
             gr.Number(
                 label="No Repeat N-gram Size",
                 value=defaults.get("no_repeat_ngram_size", cls.__fields__["no_repeat_ngram_size"].default),
                 precision=0,
-                info="Size of n-grams to prevent repetition"
+                info="Size of n-grams to prevent repetition",
             ),
             gr.Textbox(
-                label="Prefix",
-                value=defaults.get("prefix", GRADIO_NONE_STR),
-                info="Prefix text for first window"
+                label="Prefix", value=defaults.get("prefix", GRADIO_NONE_STR), info="Prefix text for first window"
             ),
             gr.Checkbox(
                 label="Suppress Blank",
                 value=defaults.get("suppress_blank", cls.__fields__["suppress_blank"].default),
-                info="Suppress blank outputs at start of sampling"
+                info="Suppress blank outputs at start of sampling",
             ),
             gr.Textbox(
-                label="Suppress Tokens",
-                value=defaults.get("suppress_tokens", "[-1]"),
-                info="Token IDs to suppress"
+                label="Suppress Tokens", value=defaults.get("suppress_tokens", "[-1]"), info="Token IDs to suppress"
             ),
             gr.Number(
                 label="Max Initial Timestamp",
                 value=defaults.get("max_initial_timestamp", cls.__fields__["max_initial_timestamp"].default),
-                info="Maximum initial timestamp"
+                info="Maximum initial timestamp",
             ),
             gr.Checkbox(
                 label="Word Timestamps",
                 value=defaults.get("word_timestamps", cls.__fields__["word_timestamps"].default),
-                info="Extract word-level timestamps"
+                info="Extract word-level timestamps",
             ),
             gr.Textbox(
                 label="Prepend Punctuations",
                 value=defaults.get("prepend_punctuations", cls.__fields__["prepend_punctuations"].default),
-                info="Punctuations to merge with next word"
+                info="Punctuations to merge with next word",
             ),
             gr.Textbox(
                 label="Append Punctuations",
                 value=defaults.get("append_punctuations", cls.__fields__["append_punctuations"].default),
-                info="Punctuations to merge with previous word"
+                info="Punctuations to merge with previous word",
             ),
             gr.Number(
                 label="Max New Tokens",
                 value=defaults.get("max_new_tokens", GRADIO_NONE_NUMBER_MIN),
                 precision=0,
-                info="Maximum number of new tokens per chunk"
+                info="Maximum number of new tokens per chunk",
             ),
             gr.Number(
                 label="Chunk Length (s)",
                 value=defaults.get("chunk_length", cls.__fields__["chunk_length"].default),
                 precision=0,
-                info="Length of audio segments in seconds"
+                info="Length of audio segments in seconds",
             ),
             gr.Number(
                 label="Hallucination Silence Threshold (sec)",
-                value=defaults.get("hallucination_silence_threshold",
-                                   GRADIO_NONE_NUMBER_MIN),
-                info="Threshold for skipping silent periods in hallucination detection"
+                value=defaults.get("hallucination_silence_threshold", GRADIO_NONE_NUMBER_MIN),
+                info="Threshold for skipping silent periods in hallucination detection",
             ),
             gr.Textbox(
                 label="Hotwords",
                 value=defaults.get("hotwords", cls.__fields__["hotwords"].default),
-                info="Hotwords/hint phrases for the model"
+                info="Hotwords/hint phrases for the model",
             ),
             gr.Number(
                 label="Language Detection Threshold",
-                value=defaults.get("language_detection_threshold",
-                                   GRADIO_NONE_NUMBER_MIN),
-                info="Threshold for language detection probability"
+                value=defaults.get("language_detection_threshold", GRADIO_NONE_NUMBER_MIN),
+                info="Threshold for language detection probability",
             ),
             gr.Number(
                 label="Language Detection Segments",
-                value=defaults.get("language_detection_segments",
-                                   cls.__fields__["language_detection_segments"].default),
+                value=defaults.get(
+                    "language_detection_segments", cls.__fields__["language_detection_segments"].default
+                ),
                 precision=0,
-                info="Number of segments for language detection"
-            )
+                info="Number of segments for language detection",
+            ),
         ]
 
         insanely_fast_whisper_inputs = [
@@ -552,7 +493,7 @@ class WhisperParams(BaseParams):
                 label="Batch Size",
                 value=defaults.get("batch_size", cls.__fields__["batch_size"].default),
                 precision=0,
-                info="Batch size for processing"
+                info="Batch size for processing",
             )
         ]
 
@@ -578,6 +519,7 @@ class WhisperParams(BaseParams):
 
 class TranscriptionPipelineParams(BaseModel):
     """Transcription pipeline parameters"""
+
     whisper: WhisperParams = Field(default_factory=WhisperParams)
     vad: VadParams = Field(default_factory=VadParams)
     diarization: DiarizationParams = Field(default_factory=DiarizationParams)
@@ -588,7 +530,7 @@ class TranscriptionPipelineParams(BaseModel):
             "whisper": self.whisper.to_dict(),
             "vad": self.vad.to_dict(),
             "diarization": self.diarization.to_dict(),
-            "bgm_separation": self.bgm_separation.to_dict()
+            "bgm_separation": self.bgm_separation.to_dict(),
         }
         return data
 
@@ -605,24 +547,24 @@ class TranscriptionPipelineParams(BaseModel):
         return whisper_list + vad_list + diarization_list + bgm_sep_list
 
     @staticmethod
-    def from_list(pipeline_list: List) -> 'TranscriptionPipelineParams':
+    def from_list(pipeline_list: List) -> "TranscriptionPipelineParams":
         """Convert list to the data class again to use it in a function."""
         data_list = deepcopy(pipeline_list)
 
-        whisper_list = data_list[0:len(WhisperParams.__annotations__)]
-        data_list = data_list[len(WhisperParams.__annotations__):]
+        whisper_list = data_list[0 : len(WhisperParams.__annotations__)]
+        data_list = data_list[len(WhisperParams.__annotations__) :]
 
-        vad_list = data_list[0:len(VadParams.__annotations__)]
-        data_list = data_list[len(VadParams.__annotations__):]
+        vad_list = data_list[0 : len(VadParams.__annotations__)]
+        data_list = data_list[len(VadParams.__annotations__) :]
 
-        diarization_list = data_list[0:len(DiarizationParams.__annotations__)]
-        data_list = data_list[len(DiarizationParams.__annotations__):]
+        diarization_list = data_list[0 : len(DiarizationParams.__annotations__)]
+        data_list = data_list[len(DiarizationParams.__annotations__) :]
 
-        bgm_sep_list = data_list[0:len(BGMSeparationParams.__annotations__)]
+        bgm_sep_list = data_list[0 : len(BGMSeparationParams.__annotations__)]
 
         return TranscriptionPipelineParams(
             whisper=WhisperParams.from_list(whisper_list),
             vad=VadParams.from_list(vad_list),
             diarization=DiarizationParams.from_list(diarization_list),
-            bgm_separation=BGMSeparationParams.from_list(bgm_sep_list)
+            bgm_separation=BGMSeparationParams.from_list(bgm_sep_list),
         )
