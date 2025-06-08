@@ -149,7 +149,7 @@ class BaseTranscriptionPipeline(ABC):
         origin_audio = deepcopy(audio)
 
         if vad_params.vad_filter:
-            if progress:
+            if progress is not None:
                 progress(0, desc="Filtering silent parts from audio..")
             vad_options = VadOptions(
                 threshold=vad_params.threshold,
@@ -190,7 +190,7 @@ class BaseTranscriptionPipeline(ABC):
                 logger.info("VAD detected no speech segments in the audio.")
 
         if diarization_params.is_diarize:
-            if progress:
+            if progress is not None:
                 progress(0.99, desc="Diarizing speakers..")
             result, elapsed_time_diarization = self.diarizer.run(
                 audio=origin_audio,
@@ -211,7 +211,7 @@ class BaseTranscriptionPipeline(ABC):
             logger.info(f"Whisper did not detected any speech segments in the audio.")
             result = [Segment()]
 
-        if progress:
+        if progress is not None:
             progress(1.0, desc="Finished.")
         total_elapsed_time = time.time() - start_time
         return result, total_elapsed_time
