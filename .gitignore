@@ -11,3 +11,9 @@ outputs/
 models/
 modules/yt_tmp.wav
 configs/default_parameters.yaml
+.aider*
+.venv
+backend/records.db
+.vscode/settings.json
+backend/.vscode/settings.json
+backend/tests/separated_audio.zip
