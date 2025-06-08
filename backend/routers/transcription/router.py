@@ -1,17 +1,21 @@
 import functools
 import asyncio
-import uuid
+from typing import Any
+from datetime import datetime, timezone
 import numpy as np
 from fastapi import (
     File,
     UploadFile,
 )
-import gradio as gr
-from fastapi import APIRouter, BackgroundTasks, Depends, Response, status
-from typing import List, Dict, Any
+from fastapi import APIRouter, BackgroundTasks, Depends, status
 from sqlalchemy.orm import Session
-from datetime import datetime, timezone
-from modules.whisper.data_classes import *
+from modules.whisper.data_classes import (
+    WhisperParams,
+    VadParams,
+    BGMSeparationParams,
+    DiarizationParams,
+    TranscriptionPipelineParams,
+)
 from modules.utils.paths import BACKEND_CACHE_DIR
 from modules.whisper.insanely_fast_whisper_inference import InsanelyFastWhisperInference
 from backend.common.audio import read_audio
@@ -54,7 +58,7 @@ async def run_transcription(
     params: TranscriptionPipelineParams,
     identifier: str,
     db: Session,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     # Update status to IN_PROGRESS before acquiring the lock,
     # as the task is actively being processed by a background worker.
     update_task_status_in_db(
