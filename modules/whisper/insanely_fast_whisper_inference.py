@@ -191,7 +191,7 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
                 gc.collect()
                 logger.info("Previous shared model offloaded during update_model.")
 
-            if progress:
+            if progress is not None and callable(progress):
                 progress(0, desc="Initializing Model..")
 
             model_path = os.path.join(self.model_dir, model_size)
@@ -317,8 +317,8 @@ class InsanelyFastWhisperInference(BaseTranscriptionPipeline):
 
     @staticmethod
     def download_model(model_size: str, download_root: str, progress: Optional[gr.Progress]):
-        if progress:
-            progress(0, "Initializing model..")
+        if progress is not None and callable(progress):
+            progress(0, desc="Initializing model..")
         logger.info(f'Downloading {model_size} to "{download_root}"....')
 
         os.makedirs(download_root, exist_ok=True)
