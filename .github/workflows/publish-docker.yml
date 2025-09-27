@@ -1,13 +1,13 @@
 name: Publish to Docker Hub
 
 on:
-  # Triggers minor version ( vX.Y.Z-ShortHash )
-  push:
-    branches:
-      - master
-  # Triggers major version ( vX.Y.Z )
-  release:
-    types: [created]
+  # # Triggers minor version ( vX.Y.Z-ShortHash )
+  # push:
+  #   branches:
+  #     - master
+  # # Triggers major version ( vX.Y.Z )
+  # release:
+  #   types: [created]
 
   workflow_dispatch:
 
