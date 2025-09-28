@@ -78,7 +78,10 @@ jobs:
         with:
           context: .
           file: ${{ env.DOCKERFILE }}
-          push: true
+          push: true # push straight to registry
+          load: false # do not load to local docker (saves time & space)
+          provenance: false # slightly smaller metadata
+          sbom: false # # optional: skip SBOM to save time/disk
           tags: |
             ghcr.io/${{ env.REPO_OWNER_LC }}/${{ matrix.name }}:${{ env.GIT_TAG }}
 
